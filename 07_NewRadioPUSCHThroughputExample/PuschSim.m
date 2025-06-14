@@ -1,7 +1,7 @@
 
 pusch_channel = PuschChannel();
 
-tx_bits = randi([0 1], 10000000, 1);
+tx_bits = randi([0 1], 50000, 1);
 [rx_bits, time_s] = pusch_channel.tranceiver(tx_bits);
 
 % Compare transmitted and received bits

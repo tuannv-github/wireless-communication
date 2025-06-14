@@ -13,34 +13,52 @@ classdef PuschChannel < handle
         encodeULSCH
         decodeULSCH
         waveformInfo
-        MCS_Table
+        constellationDiagram
+        puschmcsTables = nrPUSCHMCSTables;
     end
 
     methods
         function obj = PuschChannel()
 
-            % Table 5.1.3.1-1: MCS index table 1 for PDSCH
-            % MCS Table 1 (QPSK, 16QAM, 64QAM) for PUSCH
-            obj.MCS_Table.Modulation = {...
-                'QPSK',  'QPSK',  'QPSK',  'QPSK',  'QPSK',  'QPSK',  'QPSK',  'QPSK',  'QPSK',  'QPSK', ...
-                '16QAM', '16QAM', '16QAM', '16QAM', '16QAM', '16QAM', '16QAM', ...
-                '64QAM', '64QAM', '64QAM', '64QAM', '64QAM', '64QAM', '64QAM', '64QAM', '64QAM', '64QAM', '64QAM', '64QAM', ...
-                'reserved', 'reserved', 'reserved'};
-            obj.MCS_Table.TargetCodeRate = [...
-                120, 157, 193, 251, 308, 379, 449, 526, 602, 679, ...
-                340, 378, 434, 490, 553, 616, 658, ...
-                438, 466, 517, 567, 616, 666, 719, 772, 822, 873, 910, 948, ...
-                0, 0, 0] / 1024;
+            % obj.constellationDiagram = comm.ConstellationDiagram;
+            % obj.constellationDiagram.EnableMeasurements = true;
+
+            % Create rxwaveform directory if it doesn't exist
+            if ~exist('rxwaveform', 'dir')
+                mkdir('rxwaveform');
+            end
+            % Delete existing files in rxwaveform directory
+            if exist('rxwaveform', 'dir')
+                delete('rxwaveform/*');
+            end
+
+            % Create rxgrid directory if it doesn't exist
+            if ~exist('rxgrid', 'dir')
+                mkdir('rxgrid');
+            end            
+            % Delete existing files in rxgrid directory
+            if exist('rxgrid', 'dir')
+                delete('rxgrid/*');
+            end
+
+            % Create constellation directory if it doesn't exist
+            if ~exist('constellation', 'dir')
+                mkdir('constellation');
+            end
+            % Delete existing files in constellation directory
+            if exist('constellation', 'dir')
+                delete('constellation/*');
+            end
 
             obj.simParameters = struct();
-            obj.simParameters.SNR = 40;
+            obj.simParameters.SNR = 45;
             obj.simParameters.PerfectChannelEstimator = true;
             obj.simParameters.DisplaySimulationInformation = true;
 
             % Set waveform type and PUSCH numerology (SCS and CP type)
             obj.simParameters.Carrier = nrCarrierConfig;        % Carrier resource grid configuration
-            obj.simParameters.Carrier.NSizeGrid = 273;           % Bandwidth in number of resource blocks (52 RBs at 15 kHz SCS for 10 MHz BW)
-            obj.simParameters.Carrier.SubcarrierSpacing = 30;   % 15, 30, 60, 120 (kHz)
+            obj.simParameters.Carrier.NSizeGrid = 25;           % Bandwidth in number of resource blocks (25 RBs at 15 kHz SCS for 5 MHz BW)
+            obj.simParameters.Carrier.SubcarrierSpacing = 15;   % 15, 30, 60, 120 (kHz)
             obj.simParameters.Carrier.CyclicPrefix = 'Normal';  % 'Normal' or 'Extended' (Extended CP is relevant for 60 kHz SCS only)
             obj.simParameters.Carrier.NCellID = 0;              % Cell identity
 
@@ -103,8 +121,8 @@ classdef PuschChannel < handle
 
             % Define codeword modulation and target code rate
             mcsIndex = 28; % MCS index (0-28)
-            obj.simParameters.PUSCH.Modulation = obj.MCS_Table.Modulation{mcsIndex + 1}; % +1 for 1-based indexing
-            obj.simParameters.PUSCHExtension.TargetCodeRate = obj.MCS_Table.TargetCodeRate(mcsIndex + 1);
+            obj.simParameters.PUSCH.Modulation = obj.puschmcsTables.TransformPrecodingQAM64Table.Modulation{mcsIndex}; % +1 for 1-based indexing
+            obj.simParameters.PUSCHExtension.TargetCodeRate = obj.puschmcsTables.TransformPrecodingQAM64Table.TargetCodeRate(mcsIndex);
 
             init_channel(obj);
             init_encodeULSCH(obj);
@@ -269,7 +287,25 @@ classdef PuschChannel < handle
                 N0 = 1/sqrt(obj.simParameters.NRxAnts*double(obj.waveformInfo.Nfft)*SNR);
                 noise = N0*randn(size(rxWaveform),"like",rxWaveform);
                 rxWaveform = rxWaveform + noise;
-
+                
+                % Plot the received waveform magnitude and phase for each receive antenna
+                h = figure('Visible', 'off');
+                numRxAnts = size(rxWaveform, 2);
+                for ant = 1:numRxAnts
+                    subplot(2*numRxAnts,1,2*ant-1);
+                    plot(abs(rxWaveform(:,ant)));
+                    title(sprintf('Received Waveform Magnitude - Slot %d, Rx Ant %d', nslot, ant));
+                    xlabel('Time');
+                    ylabel('Magnitude');
+                    
+                    subplot(2*numRxAnts,1,2*ant);
+                    plot(angle(rxWaveform(:,ant)));
+                    title(sprintf('Received Waveform Phase - Slot %d, Rx Ant %d', nslot, ant));
+                    xlabel('Time');
+                    ylabel('Phase (rad)');
+                end
+                saveas(h, sprintf('rxwaveform/rxwaveform_slot_%d.png', nslot));
+                close(h);
 
                 if (obj.simParameters.PerfectChannelEstimator)
                     % Perfect synchronization. Use information provided by the
@@ -305,6 +341,41 @@ classdef PuschChannel < handle
                 if (L < carrier.SymbolsPerSlot)
                     rxGrid = cat(2, rxGrid, zeros(K,carrier.SymbolsPerSlot-L, R));
                 end
+
+                % h = figure('Visible', 'off');
+                % imagesc(abs(rxGrid(:,:,1)));
+                % colorbar;
+                % title(sprintf('Received Resource Grid Magnitude - Slot %d', nslot));
+                % xlabel('OFDM Symbols');
+                % ylabel('Subcarriers');
+                % saveas(h, sprintf('rxgrid/rxgrid_slot_%d.png', nslot));
+                % close(h);
+
+                h = figure('Visible', 'off');
+                imagesc(abs(rxGrid(:,:,1)));
+                colorbar;
+                title(sprintf('Received Resource Grid Magnitude - Slot %d', nslot));
+                xlabel('OFDM Symbols');
+                ylabel('Subcarriers');
+                
+                % Highlight DMRS symbols with border
+                hold on;
+                dmrsIndices = nrPUSCHDMRSIndices(carrier, pusch);
+                [dmrsRows, dmrsCols] = ind2sub(size(rxGrid(:,:,1)), dmrsIndices);
+                plot(dmrsCols, dmrsRows, 'r.', 'MarkerSize', 1);
+                % Add border around DMRS symbols
+                for i = 1:length(dmrsRows)
+                    rectangle('Position', [dmrsCols(i)-0.5, dmrsRows(i)-0.5, 1, 1], ...
+                             'EdgeColor', 'r', 'LineWidth', 0.5);
+                end
+                hold off;
+                
+                % Zoom the whole image
+                set(gca, 'FontSize', 20); % Increase font size
+                set(gcf, 'Position', [100, 100, 1200, 800]); % Make figure larger
+
+                saveas(h, sprintf('rxgrid/rxgrid_slot_%d.png', nslot));
+                close(h);
 
                 if (obj.simParameters.PerfectChannelEstimator)
 
@@ -348,6 +419,27 @@ classdef PuschChannel < handle
 
                 % Equalization
                 [puschEq, csi] = nrEqualizeMMSE(puschRx, puschHest, noiseEst);
+
+                % Plot constellation diagram using ConstellationDiagram                
+                % obj.constellationDiagram.SamplesPerSymbol = 1;
+                % obj.constellationDiagram.ShowTrajectory = false;
+                % obj.constellationDiagram.ShowReferenceConstellation = true;
+                % obj.constellationDiagram.ReferenceConstellation = obj.puschEq;
+                % obj.constellationDiagram.Title = 'PUSCH Constellation Diagram';
+                % obj.constellationDiagram.XLabel = 'In-Phase';
+                % obj.constellationDiagram.YLabel = 'Quadrature';
+                % obj.constellationDiagram(obj.puschEq);
+
+                % Plot constellation diagram
+                h = figure('Visible', 'off');
+                scatter(real(puschEq), imag(puschEq), '.');
+                grid on;
+                title(sprintf('PUSCH Constellation Diagram - Slot %d', nslot));
+                xlabel('In-Phase');
+                ylabel('Quadrature');
+                axis equal;
+                saveas(h, sprintf('constellation/pusch_constellation_slot_%d.png', nslot));
+                close(h);
 
                 % Decode PUSCH physical channel
                 [ulschLLRs,rxSymbols] = nrPUSCHDecode(carrier, puschNonCodebook, puschEq, noiseEst);
