@@ -198,6 +198,8 @@ classdef PuschChannel < handle
             time_s = 0;
             nslot = 0;
 
+            timeout_counter = 0;
+
             while startIdx < length(tx)
                 % Set the slot number
                 carrier.NSlot = nslot;
@@ -212,6 +214,7 @@ classdef PuschChannel < handle
                 % HARQ processing
                 % If new data for current process then create a new UL-SCH transport block
                 if harqEntity.NewData
+                    fprintf("New data for HARQ process %d\n", harqEntity.HARQProcessID);
                     % Extract the transport block from the transmitted bits
                     endIdx = min(startIdx + trBlkSize - 1, length(tx));
                     trx_size = endIdx - startIdx + 1;
@@ -225,7 +228,15 @@ classdef PuschChannel < handle
 
                     setTransportBlock(obj.encodeULSCH, trBlk, harqEntity.HARQProcessID);
                     if harqEntity.SequenceTimeout
-                        resetSoftBuffer(obj.decodeULSCHLocal, harqEntity.HARQProcessID);
+                        fprintf("Resetting soft buffer for HARQ process %d\n", harqEntity.HARQProcessID);
+                        resetSoftBuffer(decodeULSCHLocal, harqEntity.HARQProcessID);
+                        timeout_counter = timeout_counter + 1;
+                        if timeout_counter > 4
+                            fprintf("HARQ process %d timeout counter exceeded 10\n", harqEntity.HARQProcessID);
+                            break;
+                        end
+                    else
+                        timeout_counter = 0;
                     end
                 end
 
@@ -309,13 +320,13 @@ classdef PuschChannel < handle
                 close(h);
 
                 % Add single tone noise
-                P_signal = mean(abs(rxWaveform).^2);
-                P_noise = P_signal / 10^(obj.simParameters.SIR/10);
-                toneFreq = -1e6; % Frequency of the tone in Hz
-                toneAmp = sqrt(P_noise);   % Amplitude of the tone
-                t = (0:length(rxWaveform)-1)' / obj.waveformInfo.SampleRate;
-                toneNoise = toneAmp * exp(1j*2*pi*toneFreq*t);
-                rxWaveform = rxWaveform + toneNoise;
+                % P_signal = mean(abs(rxWaveform).^2);
+                % P_noise = P_signal / 10^(obj.simParameters.SIR/10);
+                % toneFreq = -1e6; % Frequency of the tone in Hz
+                % toneAmp = sqrt(P_noise);   % Amplitude of the tone
+                % t = (0:length(rxWaveform)-1)' / obj.waveformInfo.SampleRate;
+                % toneNoise = toneAmp * exp(1j*2*pi*toneFreq*t);
+                % rxWaveform = rxWaveform + toneNoise;
 
                 % % Plot the tone noise in time domain
                 % h = figure('Visible', 'on');
