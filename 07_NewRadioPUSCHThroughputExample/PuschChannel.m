@@ -52,6 +52,7 @@ classdef PuschChannel < handle
 
             obj.simParameters = struct();
             obj.simParameters.SNR = 45;
+            obj.simParameters.SIR = 15;
             obj.simParameters.PerfectChannelEstimator = true;
             obj.simParameters.DisplaySimulationInformation = true;
 
@@ -215,7 +216,7 @@ classdef PuschChannel < handle
                     endIdx = min(startIdx + trBlkSize - 1, length(tx));
                     trx_size = endIdx - startIdx + 1;
                     trBlk = tx(startIdx:endIdx);
-                    fprintf("Transmitting %d bits\n", trx_size);
+                    fprintf("Transmitting %d bits from %d to %d\n", trx_size, startIdx, endIdx);
 
                     % Pad the transport block with zeros if needed
                     if trx_size < trBlkSize
@@ -307,6 +308,35 @@ classdef PuschChannel < handle
                 saveas(h, sprintf('rxwaveform/rxwaveform_slot_%d.png', nslot));
                 close(h);
 
+                % Add single tone noise
+                P_signal = mean(abs(rxWaveform).^2);
+                P_noise = P_signal / 10^(obj.simParameters.SIR/10);
+                toneFreq = -1e6; % Frequency of the tone in Hz
+                toneAmp = sqrt(P_noise);   % Amplitude of the tone
+                t = (0:length(rxWaveform)-1)' / obj.waveformInfo.SampleRate;
+                toneNoise = toneAmp * exp(1j*2*pi*toneFreq*t);
+                rxWaveform = rxWaveform + toneNoise;
+
+                % % Plot the tone noise in time domain
+                % h = figure('Visible', 'on');
+                % t = (0:length(toneNoise)-1)' / obj.waveformInfo.SampleRate;  % Time vector in seconds
+                
+                % subplot(2,1,1);
+                % plot(t, real(toneNoise));
+                % title(sprintf('Tone Noise Real Component - Slot %d', nslot));
+                % xlabel('Time (s)');
+                % ylabel('Amplitude');
+                % grid on;
+                
+                % subplot(2,1,2);
+                % plot(t, imag(toneNoise));
+                % title(sprintf('Tone Noise Imaginary Component - Slot %d', nslot));
+                % xlabel('Time (s)');
+                % ylabel('Amplitude');
+                % grid on;
+                % % saveas(h, sprintf('tonenoise/tonenoise_slot_%d.png', nslot));
+                % % close(h);
+
                 if (obj.simParameters.PerfectChannelEstimator)
                     % Perfect synchronization. Use information provided by the
                     % channel to find the strongest multipath component
@@ -353,11 +383,12 @@ classdef PuschChannel < handle
 
                 h = figure('Visible', 'off');
                 imagesc(abs(rxGrid(:,:,1)));
+                set(gca, 'YDir', 'normal');
                 colorbar;
                 title(sprintf('Received Resource Grid Magnitude - Slot %d', nslot));
                 xlabel('OFDM Symbols');
                 ylabel('Subcarriers');
-                
+
                 % Highlight DMRS symbols with border
                 hold on;
                 dmrsIndices = nrPUSCHDMRSIndices(carrier, pusch);
@@ -373,7 +404,7 @@ classdef PuschChannel < handle
                 % Zoom the whole image
                 set(gca, 'FontSize', 20); % Increase font size
                 set(gcf, 'Position', [100, 100, 1200, 800]); % Make figure larger
-
+                
                 saveas(h, sprintf('rxgrid/rxgrid_slot_%d.png', nslot));
                 close(h);
 
