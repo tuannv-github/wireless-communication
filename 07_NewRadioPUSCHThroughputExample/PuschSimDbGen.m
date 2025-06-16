@@ -7,9 +7,9 @@ if ~exist('database', 'dir')
     mkdir('database');
 end
 
-if exist('database', 'dir')
-    delete('database/*');
-end
+% if exist('database', 'dir')
+%     delete('database/*');
+% end
 
 % MCSs = [14];
 % SNRs = [40];
