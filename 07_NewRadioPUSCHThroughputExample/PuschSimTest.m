@@ -1,8 +1,9 @@
 
 pusch_channel = PuschChannel();
+interference = Interference(25, -1e6);
 
 tx_bits = randi([0 1], 50000, 1);
-[rx_bits, time_s] = pusch_channel.tranceiver(tx_bits);
+[rx_bits, time_s] = pusch_channel.tranceiver(tx_bits, interference);
 
 % Check if lengths match
 if length(tx_bits) ~= length(rx_bits)
@@ -10,7 +11,7 @@ if length(tx_bits) ~= length(rx_bits)
     return;
 end
 
-    % Compare transmitted and received bits
+% Compare transmitted and received bits
 bit_errors = sum(tx_bits ~= rx_bits);
 if bit_errors ~= 0
     fprintf('Failed: %d bit errors detected\n', bit_errors);

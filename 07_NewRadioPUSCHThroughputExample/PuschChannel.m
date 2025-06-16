@@ -15,11 +15,12 @@ classdef PuschChannel < handle
         waveformInfo
         constellationDiagram
         puschmcsTables = nrPUSCHMCSTables;
+        MCSIndex;
+        rxGrids;
     end
 
     methods
         function obj = PuschChannel()
-
             % obj.constellationDiagram = comm.ConstellationDiagram;
             % obj.constellationDiagram.EnableMeasurements = true;
 
@@ -51,10 +52,13 @@ classdef PuschChannel < handle
             end
 
             obj.simParameters = struct();
+
             obj.simParameters.SNR = 45;
-            obj.simParameters.SIR = 15;
-            obj.simParameters.PerfectChannelEstimator = true;
+            obj.simParameters.MCSIndex = 28; % MCS index (0-28)
+
+            obj.simParameters.PerfectChannelEstimator = false;
             obj.simParameters.DisplaySimulationInformation = true;
+            obj.simParameters.Plot = false;
 
             % Set waveform type and PUSCH numerology (SCS and CP type)
             obj.simParameters.Carrier = nrCarrierConfig;        % Carrier resource grid configuration
@@ -120,14 +124,11 @@ classdef PuschChannel < handle
             obj.simParameters.DelaySpread = 30e-9;
             obj.simParameters.MaximumDopplerShift = 10;
 
-            % Define codeword modulation and target code rate
-            mcsIndex = 28; % MCS index (0-28)
-            obj.simParameters.PUSCH.Modulation = obj.puschmcsTables.TransformPrecodingQAM64Table.Modulation{mcsIndex}; % +1 for 1-based indexing
-            obj.simParameters.PUSCHExtension.TargetCodeRate = obj.puschmcsTables.TransformPrecodingQAM64Table.TargetCodeRate(mcsIndex);
-
             init_channel(obj);
             init_encodeULSCH(obj);
             init_decodeULSCH(obj);
+
+            obj.rxGrids = [];
         end
 
         function init_channel(obj)
@@ -157,18 +158,16 @@ classdef PuschChannel < handle
         function init_encodeULSCH(obj)
             obj.encodeULSCH = nrULSCH;
             obj.encodeULSCH.MultipleHARQProcesses = false;
-            obj.encodeULSCH.TargetCodeRate = obj.simParameters.PUSCHExtension.TargetCodeRate;
         end
 
         function init_decodeULSCH(obj)
             obj.decodeULSCH = nrULSCHDecoder;
             obj.decodeULSCH.MultipleHARQProcesses = false;
-            obj.decodeULSCH.TargetCodeRate = obj.simParameters.PUSCHExtension.TargetCodeRate;
             obj.decodeULSCH.LDPCDecodingAlgorithm = obj.simParameters.PUSCHExtension.LDPCDecodingAlgorithm;
             obj.decodeULSCH.MaximumLDPCIterationCount = obj.simParameters.PUSCHExtension.MaximumLDPCIterationCount;
         end
         
-        function [rx, time_s] = tranceiver(obj, tx)
+        function [rx, time_s] = tranceiver(obj, tx, interference)
             % Transceiver function that simulates PUSCH transmission and reception
             % Inputs:
             %   tx - Transmitted bits
@@ -182,6 +181,12 @@ classdef PuschChannel < handle
             carrier = obj.simParameters.Carrier;
             pusch = obj.simParameters.PUSCH;
 
+            pusch.Modulation = obj.puschmcsTables.TransformPrecodingQAM64Table.Modulation{obj.simParameters.MCSIndex};
+            obj.simParameters.PUSCHExtension.TargetCodeRate = obj.puschmcsTables.TransformPrecodingQAM64Table.TargetCodeRate(obj.simParameters.MCSIndex);
+
+            obj.encodeULSCH.TargetCodeRate = obj.simParameters.PUSCHExtension.TargetCodeRate;
+            obj.decodeULSCH.TargetCodeRate = obj.simParameters.PUSCHExtension.TargetCodeRate;
+
             decodeULSCHLocal = obj.decodeULSCH;  % Copy of the decoder handle to help PCT classification of variable
             decodeULSCHLocal.reset();        % Reset decoder at the start of each SNR point
 
@@ -192,6 +197,8 @@ classdef PuschChannel < handle
             harqSequence = 0:obj.simParameters.PUSCHExtension.NHARQProcesses-1; 
             rvSeq = [0 2 3 1];
             harqEntity = HARQEntity(harqSequence,rvSeq);
+
+            offset = 0;
 
             rx = [];
             startIdx = 1;
@@ -219,7 +226,7 @@ classdef PuschChannel < handle
                     endIdx = min(startIdx + trBlkSize - 1, length(tx));
                     trx_size = endIdx - startIdx + 1;
                     trBlk = tx(startIdx:endIdx);
-                    fprintf("Transmitting %d bits from %d to %d\n", trx_size, startIdx, endIdx);
+                    fprintf("Transmitting %d bits from %d to %d/%d\n", trx_size, startIdx, endIdx, length(tx));
 
                     % Pad the transport block with zeros if needed
                     if trx_size < trBlkSize
@@ -301,32 +308,30 @@ classdef PuschChannel < handle
                 rxWaveform = rxWaveform + noise;
                 
                 % Plot the received waveform magnitude and phase for each receive antenna
-                h = figure('Visible', 'off');
-                numRxAnts = size(rxWaveform, 2);
-                for ant = 1:numRxAnts
-                    subplot(2*numRxAnts,1,2*ant-1);
-                    plot(abs(rxWaveform(:,ant)));
-                    title(sprintf('Received Waveform Magnitude - Slot %d, Rx Ant %d', nslot, ant));
-                    xlabel('Time');
-                    ylabel('Magnitude');
-                    
-                    subplot(2*numRxAnts,1,2*ant);
-                    plot(angle(rxWaveform(:,ant)));
-                    title(sprintf('Received Waveform Phase - Slot %d, Rx Ant %d', nslot, ant));
-                    xlabel('Time');
-                    ylabel('Phase (rad)');
+                if obj.simParameters.Plot
+                    h = figure('Visible', 'off');
+                    numRxAnts = size(rxWaveform, 2);
+                    for ant = 1:numRxAnts
+                        subplot(2*numRxAnts,1,2*ant-1);
+                        plot(abs(rxWaveform(:,ant)));
+                        title(sprintf('Received Waveform Magnitude - Slot %d, Rx Ant %d', nslot, ant));
+                        xlabel('Time');
+                        ylabel('Magnitude');
+                        
+                        subplot(2*numRxAnts,1,2*ant);
+                        plot(angle(rxWaveform(:,ant)));
+                        title(sprintf('Received Waveform Phase - Slot %d, Rx Ant %d', nslot, ant));
+                        xlabel('Time');
+                        ylabel('Phase (rad)');
+                    end
+                    saveas(h, sprintf('rxwaveform/rxwaveform_slot_%d.png', nslot));
+                    close(h);
                 end
-                saveas(h, sprintf('rxwaveform/rxwaveform_slot_%d.png', nslot));
-                close(h);
 
-                % Add single tone noise
-                % P_signal = mean(abs(rxWaveform).^2);
-                % P_noise = P_signal / 10^(obj.simParameters.SIR/10);
-                % toneFreq = -1e6; % Frequency of the tone in Hz
-                % toneAmp = sqrt(P_noise);   % Amplitude of the tone
-                % t = (0:length(rxWaveform)-1)' / obj.waveformInfo.SampleRate;
-                % toneNoise = toneAmp * exp(1j*2*pi*toneFreq*t);
-                % rxWaveform = rxWaveform + toneNoise;
+                % Add interference
+                if nargin > 2 && ~isempty(interference)
+                    rxWaveform = rxWaveform + interference.getInterference(rxWaveform, obj.waveformInfo.SampleRate);
+                end
 
                 % % Plot the tone noise in time domain
                 % h = figure('Visible', 'on');
@@ -383,6 +388,13 @@ classdef PuschChannel < handle
                     rxGrid = cat(2, rxGrid, zeros(K,carrier.SymbolsPerSlot-L, R));
                 end
 
+                obj.rxGrids = cat(1, obj.rxGrids, reshape(rxGrid, 1, []));
+                time_s = time_s + obj.simParameters.slotDurationS;
+                % 7D1S2U
+                if mod(nslot, 2) == 0
+                    time_s = time_s + 8 * obj.simParameters.slotDurationS;
+                end
+
                 % h = figure('Visible', 'off');
                 % imagesc(abs(rxGrid(:,:,1)));
                 % colorbar;
@@ -392,32 +404,34 @@ classdef PuschChannel < handle
                 % saveas(h, sprintf('rxgrid/rxgrid_slot_%d.png', nslot));
                 % close(h);
 
-                h = figure('Visible', 'off');
-                imagesc(abs(rxGrid(:,:,1)));
-                set(gca, 'YDir', 'normal');
-                colorbar;
-                title(sprintf('Received Resource Grid Magnitude - Slot %d', nslot));
-                xlabel('OFDM Symbols');
-                ylabel('Subcarriers');
+                if obj.simParameters.Plot
+                    h = figure('Visible', 'off');
+                    imagesc(abs(rxGrid(:,:,1)));
+                    set(gca, 'YDir', 'normal');
+                    colorbar;
+                    title(sprintf('Received Resource Grid Magnitude - Slot %d', nslot));
+                    xlabel('OFDM Symbols');
+                    ylabel('Subcarriers');
 
-                % Highlight DMRS symbols with border
-                hold on;
-                dmrsIndices = nrPUSCHDMRSIndices(carrier, pusch);
-                [dmrsRows, dmrsCols] = ind2sub(size(rxGrid(:,:,1)), dmrsIndices);
-                plot(dmrsCols, dmrsRows, 'r.', 'MarkerSize', 1);
-                % Add border around DMRS symbols
-                for i = 1:length(dmrsRows)
-                    rectangle('Position', [dmrsCols(i)-0.5, dmrsRows(i)-0.5, 1, 1], ...
-                             'EdgeColor', 'r', 'LineWidth', 0.5);
+                    % Highlight DMRS symbols with border
+                    hold on;
+                    dmrsIndices = nrPUSCHDMRSIndices(carrier, pusch);
+                    [dmrsRows, dmrsCols] = ind2sub(size(rxGrid(:,:,1)), dmrsIndices);
+                    plot(dmrsCols, dmrsRows, 'r.', 'MarkerSize', 1);
+                    % Add border around DMRS symbols
+                    for i = 1:length(dmrsRows)
+                        rectangle('Position', [dmrsCols(i)-0.5, dmrsRows(i)-0.5, 1, 1], ...
+                                'EdgeColor', 'r', 'LineWidth', 0.5);
+                    end
+                    hold off;
+                    
+                    % Zoom the whole image
+                    set(gca, 'FontSize', 20); % Increase font size
+                    set(gcf, 'Position', [100, 100, 1200, 800]); % Make figure larger
+                    
+                    saveas(h, sprintf('rxgrid/rxgrid_slot_%d.png', nslot));
+                    close(h);
                 end
-                hold off;
-                
-                % Zoom the whole image
-                set(gca, 'FontSize', 20); % Increase font size
-                set(gcf, 'Position', [100, 100, 1200, 800]); % Make figure larger
-                
-                saveas(h, sprintf('rxgrid/rxgrid_slot_%d.png', nslot));
-                close(h);
 
                 if (obj.simParameters.PerfectChannelEstimator)
 
@@ -472,16 +486,18 @@ classdef PuschChannel < handle
                 % obj.constellationDiagram.YLabel = 'Quadrature';
                 % obj.constellationDiagram(obj.puschEq);
 
-                % Plot constellation diagram
-                h = figure('Visible', 'off');
-                scatter(real(puschEq), imag(puschEq), '.');
-                grid on;
-                title(sprintf('PUSCH Constellation Diagram - Slot %d', nslot));
-                xlabel('In-Phase');
-                ylabel('Quadrature');
-                axis equal;
-                saveas(h, sprintf('constellation/pusch_constellation_slot_%d.png', nslot));
-                close(h);
+                if obj.simParameters.Plot
+                    % Plot constellation diagram
+                    h = figure('Visible', 'off');
+                    scatter(real(puschEq), imag(puschEq), '.');
+                    grid on;
+                    title(sprintf('PUSCH Constellation Diagram - Slot %d', nslot));
+                    xlabel('In-Phase');
+                    ylabel('Quadrature');
+                    axis equal;
+                    saveas(h, sprintf('constellation/pusch_constellation_slot_%d.png', nslot));
+                    close(h);
+                end
 
                 % Decode PUSCH physical channel
                 [ulschLLRs,rxSymbols] = nrPUSCHDecode(carrier, puschNonCodebook, puschEq, noiseEst);
@@ -521,11 +537,6 @@ classdef PuschChannel < handle
                     end
                 else
                     fprintf("Block error\n");
-                end
-                time_s = time_s + obj.simParameters.slotDurationS;
-                % 7D1S2U
-                if mod(nslot, 2) == 0
-                    time_s = time_s + 8 * obj.simParameters.slotDurationS;
                 end
             end
         end
