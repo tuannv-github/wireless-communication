@@ -58,7 +58,7 @@ classdef PuschChannel < handle
 
             obj.simParameters.PerfectChannelEstimator = false;
             obj.simParameters.DisplaySimulationInformation = true;
-            obj.simParameters.Plot = false;
+            obj.simParameters.Plot = true;
 
             % Set waveform type and PUSCH numerology (SCS and CP type)
             obj.simParameters.Carrier = nrCarrierConfig;        % Carrier resource grid configuration
@@ -464,7 +464,19 @@ classdef PuschChannel < handle
                     % scheme
                     dmrsLayerSymbols = nrPUSCHDMRS(carrier,puschNonCodebook);
                     dmrsLayerIndices = nrPUSCHDMRSIndices(carrier,puschNonCodebook);
-                    [estChannelGrid,noiseEst] = nrChannelEstimate(carrier,rxGrid,dmrsLayerIndices,dmrsLayerSymbols,'CDMLengths',pusch.DMRS.CDMLengths);
+                    [estChannelGrid, noiseEst] = nrChannelEstimate(carrier,rxGrid,dmrsLayerIndices,dmrsLayerSymbols,'CDMLengths',pusch.DMRS.CDMLengths);
+                    if obj.simParameters.Plot
+                        receivedDMRS = rxGrid(dmrsLayerIndices);
+                        h = figure('Visible', 'off');
+                        scatter(real(receivedDMRS), imag(receivedDMRS), '.');
+                        grid on;
+                        title('DMRS Symbols Constellation');
+                        xlabel('In-Phase (I)');
+                        ylabel('Quadrature (Q)');
+                        axis equal;
+                        saveas(h, sprintf('constellation/rx_dmrs_constellation_slot_%d.png', nslot));
+                        close(h);
+                    end
                 end
 
                 % Extract the PUSCH symbols from the received resource grid
@@ -472,6 +484,19 @@ classdef PuschChannel < handle
 
                 % Get PUSCH resource elements from the received grid
                 [puschRx, puschHest] = nrExtractResources(obj.puschIndices, rxGrid, estChannelGrid);
+
+                if obj.simParameters.Plot
+                    % Plot constellation diagram
+                    h = figure('Visible', 'off');
+                    scatter(real(puschRx), imag(puschRx), '.');
+                    grid on;
+                    title(sprintf('PUSCH Rx Constellation Diagram - Slot %d', nslot));
+                    xlabel('In-Phase');
+                    ylabel('Quadrature');
+                    axis equal;
+                    saveas(h, sprintf('constellation/pusch_rx_constellation_slot_%d.png', nslot));
+                    close(h);
+                end
 
                 % Equalization
                 [puschEq, csi] = nrEqualizeMMSE(puschRx, puschHest, noiseEst);
