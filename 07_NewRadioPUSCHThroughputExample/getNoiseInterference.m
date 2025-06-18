@@ -1,9 +1,11 @@
-function [H] = getNoiseInterference(decbits, encodeULSCH, harqProcessId, pusch, carrier, NTxAnts, rxGrid)
+function [H] = getNoiseInterference(decbits, encodeULSCH, harqEntity, pusch, carrier, NTxAnts, rxGrid)
     
+    fprintf("harqEntity.RedundancyVersion: %d\n", harqEntity.RedundancyVersion);
+
     [puschIndices, puschIndicesInfo] = nrPUSCHIndices(carrier, pusch);
 
-    setTransportBlock(encodeULSCH, decbits, harqProcessId)
-    codedTrBlock = encodeULSCH(pusch.Modulation, pusch.NumLayers, puschIndicesInfo.G, harqProcessId);
+    setTransportBlock(encodeULSCH, decbits, harqEntity.HARQProcessID)
+    codedTrBlock = encodeULSCH(pusch.Modulation, pusch.NumLayers, puschIndicesInfo.G, harqEntity.RedundancyVersion);
     puschGrid = nrResourceGrid(carrier, NTxAnts);
     puschSymbols = nrPUSCH(carrier,pusch,codedTrBlock);
 

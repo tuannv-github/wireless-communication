@@ -596,7 +596,7 @@ classdef PuschChannel < handle
                 [decbits, blkerr] = decodeULSCHLocal(ulschLLRs, pusch.Modulation, pusch.NumLayers, harqEntity.RedundancyVersion);
 
                 if (~blkerr)
-                    H = getNoiseInterference(decbits, obj.encodeULSCH, harqEntity.HARQProcessID, pusch, carrier, obj.simParameters.NTxAnts, rxGrid);
+                    H = getNoiseInterference(decbits, obj.encodeULSCH, harqEntity, pusch, carrier, obj.simParameters.NTxAnts, rxGrid);
                     if (obj.simParameters.Plot)
                         h = figure('Visible', 'off');
                         imagesc(abs(H(:,:,1)));
@@ -606,6 +606,17 @@ classdef PuschChannel < handle
                         xlabel('OFDM Symbols');
                         ylabel('Subcarriers');
                         saveas(h, sprintf('channel/noise_interference_slot_%d.png', nslot));
+                        close(h);
+                    end
+                    if obj.simParameters.Plot
+                        h = figure('Visible', 'off');
+                        imagesc(abs(H(:,:,1) - estChannelGrid(:,:,1)));
+                        clim(obj.colorLimits);
+                        colorbar;
+                        title('Channel Difference Grid Magnitude');
+                        xlabel('OFDM Symbols');
+                        ylabel('Subcarriers');
+                        saveas(h, sprintf('channel/channel_difference_slot_%d.png', nslot));
                         close(h);
                     end
                 end

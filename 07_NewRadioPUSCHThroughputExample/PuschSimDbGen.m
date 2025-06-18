@@ -11,8 +11,8 @@ end
 %     delete('database/*');
 % end
 
-MCSs = [14];
-SNRs = [30];
+MCSs = [5];
+SNRs = [40];
 SIRs = [15];
 FRQs = [1e6+1234];
 
