@@ -70,6 +70,15 @@ classdef PuschChannel < handle
                 delete('txgrid/*');
             end
 
+            % Create interference directory if it doesn't exist
+            if ~exist('interference', 'dir')
+                mkdir('interference');
+            end
+            % Delete existing files in interference directory
+            if exist('interference', 'dir')
+                delete('interference/*');
+            end
+
             obj.simParameters = struct();
 
             obj.simParameters.SNR = 45;
@@ -369,7 +378,23 @@ classdef PuschChannel < handle
 
                 % Add interference
                 if nargin > 2 && ~isempty(interference)
-                    rxWaveform = rxWaveform + interference.getInterference(rxWaveform, obj.waveformInfo.SampleRate);
+                    interferenceWaveform = interference.getInterference(rxWaveform, obj.waveformInfo.SampleRate);
+                    rxWaveform = rxWaveform + interferenceWaveform;
+                    if obj.simParameters.Plot
+                        h = figure('Visible', 'off');
+                        subplot(2,1,1);
+                        plot(abs(fftshift(fft(interferenceWaveform))));
+                        title(sprintf('Interference FFT Magnitude - Slot %d', nslot));
+                        xlabel('Frequency');
+                        ylabel('Magnitude');
+                        
+                        subplot(2,1,2);
+                        spectrogram(interferenceWaveform, 256, 240, 256, obj.waveformInfo.SampleRate, 'xaxis');
+                        title(sprintf('Interference Spectrogram - Slot %d', nslot));
+                        colorbar;
+                        saveas(h, sprintf('interference/interference_spectrogram_slot_%d.png', nslot));
+                        close(h);
+                    end
                 end
 
                 % % Plot the tone noise in time domain

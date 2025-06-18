@@ -13,7 +13,7 @@ end
 
 MCSs = [15];
 SNRs = [40];
-SIRs = [15];
+SIRs = [0];
 FRQs = [1e6];
 
 % MCSs = [14, 28];
