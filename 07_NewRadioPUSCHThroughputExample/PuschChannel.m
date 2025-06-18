@@ -17,6 +17,7 @@ classdef PuschChannel < handle
         puschmcsTables = nrPUSCHMCSTables;
         MCSIndex;
         rxGrids;
+        colorLimits = [0 2];
     end
 
     methods
@@ -49,6 +50,24 @@ classdef PuschChannel < handle
             % Delete existing files in constellation directory
             if exist('constellation', 'dir')
                 delete('constellation/*');
+            end
+
+            % Create channel directory if it doesn't exist
+            if ~exist('channel', 'dir')
+                mkdir('channel');
+            end
+            % Delete existing files in channel directory
+            if exist('channel', 'dir')
+                delete('channel/*');
+            end
+
+            % Create tx directory if it doesn't exist
+            if ~exist('txgrid', 'dir')
+                mkdir('txgrid');
+            end
+            % Delete existing files in tx directory
+            if exist('txgrid', 'dir')
+                delete('txgrid/*');
             end
 
             obj.simParameters = struct();
@@ -282,6 +301,26 @@ classdef PuschChannel < handle
                     [~,dmrsAntIndices] = nrExtractResources(dmrsIndices(:,p),puschGrid);
                     puschGrid(dmrsAntIndices) = puschGrid(dmrsAntIndices) + dmrsSymbols(:,p) * F(p,:);
                 end
+                if obj.simParameters.Plot
+                    h = figure('Visible', 'off');
+                    imagesc(abs(puschGrid(:,:,1)));
+                    clim(obj.colorLimits);
+                    colorbar;
+                    title('PUSCH Grid Magnitude');
+                    saveas(h, sprintf('txgrid/puschgrid_slot_%d.png', nslot));
+                    close(h);
+                end
+                if obj.simParameters.Plot
+                    h = figure('Visible', 'off');
+                    scatter(real(puschGrid(puschAntIndices)), imag(puschGrid(puschAntIndices)), '.');
+                    grid on;
+                    title(sprintf('PUSCH Tx Constellation Diagram - Slot %d', nslot));
+                    xlabel('In-Phase');
+                    ylabel('Quadrature');
+                    axis equal;
+                    saveas(h, sprintf('txgrid/pusch_tx_constellation_slot_%d.png', nslot));
+                    close(h);
+                end
 
                 % OFDM modulation
                 txWaveform = nrOFDMModulate(carrier, puschGrid);
@@ -407,6 +446,7 @@ classdef PuschChannel < handle
                 if obj.simParameters.Plot
                     h = figure('Visible', 'off');
                     imagesc(abs(rxGrid(:,:,1)));
+                    clim(obj.colorLimits);
                     set(gca, 'YDir', 'normal');
                     colorbar;
                     title(sprintf('Received Resource Grid Magnitude - Slot %d', nslot));
@@ -477,6 +517,17 @@ classdef PuschChannel < handle
                         saveas(h, sprintf('constellation/rx_dmrs_constellation_slot_%d.png', nslot));
                         close(h);
                     end
+                    if obj.simParameters.Plot
+                        h = figure('Visible', 'off');
+                        imagesc(abs(estChannelGrid(:,:,1)));
+                        clim(obj.colorLimits);
+                        colorbar;
+                        title('Estimated Channel Grid Magnitude');
+                        xlabel('OFDM Symbols');
+                        ylabel('Subcarriers');
+                        saveas(h, sprintf('channel/channel_slot_%d.png', nslot));
+                        close(h);
+                    end
                 end
 
                 % Extract the PUSCH symbols from the received resource grid
@@ -544,6 +595,21 @@ classdef PuschChannel < handle
                 decodeULSCHLocal.TransportBlockLength = trBlkSize;
                 [decbits, blkerr] = decodeULSCHLocal(ulschLLRs, pusch.Modulation, pusch.NumLayers, harqEntity.RedundancyVersion);
 
+                if (~blkerr)
+                    H = getNoiseInterference(decbits, obj.encodeULSCH, harqEntity.HARQProcessID, pusch, carrier, obj.simParameters.NTxAnts, rxGrid);
+                    if (obj.simParameters.Plot)
+                        h = figure('Visible', 'off');
+                        imagesc(abs(H(:,:,1)));
+                        clim(obj.colorLimits);
+                        colorbar;
+                        title('Noise Interference Grid Magnitude');
+                        xlabel('OFDM Symbols');
+                        ylabel('Subcarriers');
+                        saveas(h, sprintf('channel/noise_interference_slot_%d.png', nslot));
+                        close(h);
+                    end
+                end
+
                 % Update current process with CRC error and advance to next process
                 procstatus = updateAndAdvance(harqEntity,blkerr,trBlkSize,obj.puschIndicesInfo.G);
                 if (obj.simParameters.DisplaySimulationInformation)
@@ -551,17 +617,18 @@ classdef PuschChannel < handle
                 end
 
                 % Add the transport block to the received bits
-                if (~blkerr)
-                    % Update the start index for the next transmission
-                    startIdx = startIdx + trBlkSize;
-                    
-                    if (trx_size < trBlkSize)
-                        rx = [rx; decbits(1:trx_size)];
-                    else
-                        rx = [rx; decbits];
-                    end
-                else
+                if (blkerr)
                     fprintf("Block error\n");
+                    continue
+                end
+
+                % Update the start index for the next transmission
+                startIdx = startIdx + trBlkSize;
+                
+                if (trx_size < trBlkSize)
+                    rx = [rx; decbits(1:trx_size)];
+                else
+                    rx = [rx; decbits];
                 end
             end
         end
