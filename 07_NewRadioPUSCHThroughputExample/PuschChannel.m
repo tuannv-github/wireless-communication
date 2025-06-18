@@ -53,12 +53,12 @@ classdef PuschChannel < handle
             end
 
             % Create channel directory if it doesn't exist
-            if ~exist('channel', 'dir')
-                mkdir('channel');
+            if ~exist('ulchannel', 'dir')
+                mkdir('ulchannel');
             end
             % Delete existing files in channel directory
-            if exist('channel', 'dir')
-                delete('channel/*');
+            if exist('ulchannel', 'dir')
+                delete('ulchannel/*');
             end
 
             % Create tx directory if it doesn't exist
@@ -525,7 +525,7 @@ classdef PuschChannel < handle
                         title('Estimated Channel Grid Magnitude');
                         xlabel('OFDM Symbols');
                         ylabel('Subcarriers');
-                        saveas(h, sprintf('channel/channel_slot_%d.png', nslot));
+                        saveas(h, sprintf('ulchannel/channel_slot_%d.png', nslot));
                         close(h);
                     end
                 end
@@ -605,7 +605,7 @@ classdef PuschChannel < handle
                         title('Noise Interference Grid Magnitude');
                         xlabel('OFDM Symbols');
                         ylabel('Subcarriers');
-                        saveas(h, sprintf('channel/noise_interference_slot_%d.png', nslot));
+                        saveas(h, sprintf('ulchannel/noise_interference_slot_%d.png', nslot));
                         close(h);
                     end
                     if obj.simParameters.Plot
@@ -616,7 +616,7 @@ classdef PuschChannel < handle
                         title('Channel Difference Grid Magnitude');
                         xlabel('OFDM Symbols');
                         ylabel('Subcarriers');
-                        saveas(h, sprintf('channel/channel_difference_slot_%d.png', nslot));
+                        saveas(h, sprintf('ulchannel/channel_difference_slot_%d.png', nslot));
                         close(h);
                     end
                 end
