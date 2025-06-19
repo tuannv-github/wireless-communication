@@ -365,12 +365,11 @@ classdef PuschChannel < handle
                         title(sprintf('Received Waveform Magnitude - Slot %d, Rx Ant %d', nslot, ant));
                         xlabel('Time');
                         ylabel('Magnitude');
-                        
+
                         subplot(2*numRxAnts,1,2*ant);
-                        plot(angle(rxWaveform(:,ant)));
-                        title(sprintf('Received Waveform Phase - Slot %d, Rx Ant %d', nslot, ant));
-                        xlabel('Time');
-                        ylabel('Phase (rad)');
+                        spectrogram(rxWaveform(:,ant), 256, 240, 256, obj.waveformInfo.SampleRate, 'xaxis');
+                        title(sprintf('Received Waveform Spectrogram - Slot %d, Rx Ant %d', nslot, ant));
+                        colorbar;
                     end
                     saveas(h, sprintf('rxwaveform/rxwaveform_slot_%d.png', nslot));
                     close(h);

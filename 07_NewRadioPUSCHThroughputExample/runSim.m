@@ -9,7 +9,7 @@ function [ret, row] = runSim(MCS, SNR, SIR, FRQ, tx_bits)
 
     pusch_channel.simParameters.MCSIndex = MCS;
     pusch_channel.simParameters.SNR = SNR;
-    interference = InterferenceVco(SIR);
+    interference = InterferenceFilterWGN(SIR);
 
     [rx_bits, time_s] = pusch_channel.tranceiver(tx_bits, interference);
 

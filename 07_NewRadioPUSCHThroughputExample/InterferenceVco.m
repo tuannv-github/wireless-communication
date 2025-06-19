@@ -19,7 +19,7 @@ classdef InterferenceVco
             P_noise = P_signal / 10^(obj.SIR/10);
             amp = sqrt(P_noise);   % Amplitude of the tone
 
-            interference = amp*vco(sawtooth(2*pi*1e3*t, 0.75), [1 2]*1e6, SampleRate);
+            interference = amp*vco(chirp(t, 0, t(end), 10e3), [1e6 2e6], SampleRate);
             return;
         end
     end
