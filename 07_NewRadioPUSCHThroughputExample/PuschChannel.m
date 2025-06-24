@@ -620,27 +620,26 @@ classdef PuschChannel < handle
                 [decbits, blkerr] = decodeULSCHLocal(ulschLLRs, pusch.Modulation, pusch.NumLayers, harqEntity.RedundancyVersion);
 
                 if (~blkerr)
-                    H = getNoiseInterference(decbits, obj.encodeULSCH, harqEntity, pusch, carrier, obj.simParameters.NTxAnts, rxGrid);
+                    NI = getNoiseInterference(decbits, obj.encodeULSCH, harqEntity, pusch, carrier, obj.simParameters.NTxAnts, rxGrid, estChannelGrid);
+                    
+                    % Split H into I and Q components
+                    NI_I = real(NI);
+                    NI_Q = imag(NI);
+                    NI_zero = zeros(size(NI_I));
+                    NI_IQ = cat(3, NI_I, NI_Q, NI_zero);
+                    % Save H_IQ matrix as image without plotting
+                    imwrite(mat2gray(NI_IQ(:,:,1)), sprintf('ulchannel/noise_interference_slot_%d.png', nslot));
+                    save(sprintf('ulchannel/noise_interference_slot_%d.mat', nslot), 'NI_IQ');
+
                     if (obj.simParameters.Plot)
                         h = figure('Visible', 'off');
-                        imagesc(abs(H(:,:,1)));
+                        imagesc(abs(NI(:,:,1)));
                         clim(obj.colorLimits);
                         colorbar;
                         title('Noise Interference Grid Magnitude');
                         xlabel('OFDM Symbols');
                         ylabel('Subcarriers');
-                        saveas(h, sprintf('ulchannel/noise_interference_slot_%d.png', nslot));
-                        close(h);
-                    end
-                    if obj.simParameters.Plot
-                        h = figure('Visible', 'off');
-                        imagesc(abs(H(:,:,1) - estChannelGrid(:,:,1)));
-                        clim(obj.colorLimits);
-                        colorbar;
-                        title('Channel Difference Grid Magnitude');
-                        xlabel('OFDM Symbols');
-                        ylabel('Subcarriers');
-                        saveas(h, sprintf('ulchannel/channel_difference_slot_%d.png', nslot));
+                        saveas(h, sprintf('ulchannel/noise_interference_rgb_slot_%d.png', nslot));
                         close(h);
                     end
                 end

@@ -1,4 +1,4 @@
-function [H] = getNoiseInterference(decbits, encodeULSCH, harqEntity, pusch, carrier, NTxAnts, rxGrid)
+function [NI] = getNoiseInterference(decbits, encodeULSCH, harqEntity, pusch, carrier, NTxAnts, rxGrid, H_DMRS)
     
     fprintf("harqEntity.RedundancyVersion: %d\n", harqEntity.RedundancyVersion);
 
@@ -26,5 +26,5 @@ function [H] = getNoiseInterference(decbits, encodeULSCH, harqEntity, pusch, car
         puschGrid(dmrsAntIndices) = puschGrid(dmrsAntIndices) + dmrsSymbols(:,p) * F(p,:);
     end
 
-    H = puschGrid./rxGrid;
+    NI = rxGrid - puschGrid.*H_DMRS;
 end
