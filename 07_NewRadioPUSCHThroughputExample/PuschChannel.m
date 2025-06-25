@@ -1,5 +1,3 @@
-
-
 classdef PuschChannel < handle
     %PUSCHCHANNEL Summary of this class goes here
     %   Detailed explanation goes here
@@ -18,66 +16,13 @@ classdef PuschChannel < handle
         MCSIndex;
         rxGrids;
         colorLimits = [0 2];
+        NIs;
     end
 
     methods
         function obj = PuschChannel()
             % obj.constellationDiagram = comm.ConstellationDiagram;
             % obj.constellationDiagram.EnableMeasurements = true;
-
-            % Create rxwaveform directory if it doesn't exist
-            if ~exist('rxwaveform', 'dir')
-                mkdir('rxwaveform');
-            end
-            % Delete existing files in rxwaveform directory
-            if exist('rxwaveform', 'dir')
-                delete('rxwaveform/*');
-            end
-
-            % Create rxgrid directory if it doesn't exist
-            if ~exist('rxgrid', 'dir')
-                mkdir('rxgrid');
-            end            
-            % Delete existing files in rxgrid directory
-            if exist('rxgrid', 'dir')
-                delete('rxgrid/*');
-            end
-
-            % Create constellation directory if it doesn't exist
-            if ~exist('constellation', 'dir')
-                mkdir('constellation');
-            end
-            % Delete existing files in constellation directory
-            if exist('constellation', 'dir')
-                delete('constellation/*');
-            end
-
-            % Create channel directory if it doesn't exist
-            if ~exist('ulchannel', 'dir')
-                mkdir('ulchannel');
-            end
-            % Delete existing files in channel directory
-            if exist('ulchannel', 'dir')
-                delete('ulchannel/*');
-            end
-
-            % Create tx directory if it doesn't exist
-            if ~exist('txgrid', 'dir')
-                mkdir('txgrid');
-            end
-            % Delete existing files in tx directory
-            if exist('txgrid', 'dir')
-                delete('txgrid/*');
-            end
-
-            % Create interference directory if it doesn't exist
-            if ~exist('interference', 'dir')
-                mkdir('interference');
-            end
-            % Delete existing files in interference directory
-            if exist('interference', 'dir')
-                delete('interference/*');
-            end
 
             obj.simParameters = struct();
 
@@ -87,6 +32,62 @@ classdef PuschChannel < handle
             obj.simParameters.PerfectChannelEstimator = false;
             obj.simParameters.DisplaySimulationInformation = true;
             obj.simParameters.Plot = true;
+
+            if obj.simParameters.Plot
+                % Create rxwaveform directory if it doesn't exist
+                if ~exist('rxwaveform', 'dir')
+                    mkdir('rxwaveform');
+                end
+                % Delete existing files in rxwaveform directory
+                if exist('rxwaveform', 'dir')
+                    delete('rxwaveform/*');
+                end
+
+                % Create rxgrid directory if it doesn't exist
+                if ~exist('rxgrid', 'dir')
+                    mkdir('rxgrid');
+                end            
+                % Delete existing files in rxgrid directory
+                if exist('rxgrid', 'dir')
+                    delete('rxgrid/*');
+                end
+
+                % Create constellation directory if it doesn't exist
+                if ~exist('constellation', 'dir')
+                    mkdir('constellation');
+                end
+                % Delete existing files in constellation directory
+                if exist('constellation', 'dir')
+                    delete('constellation/*');
+                end
+
+                % Create channel directory if it doesn't exist
+                if ~exist('ulchannel', 'dir')
+                    mkdir('ulchannel');
+                end
+                % Delete existing files in channel directory
+                if exist('ulchannel', 'dir')
+                    delete('ulchannel/*');
+                end
+
+                % Create tx directory if it doesn't exist
+                if ~exist('txgrid', 'dir')
+                    mkdir('txgrid');
+                end
+                % Delete existing files in tx directory
+                if exist('txgrid', 'dir')
+                    delete('txgrid/*');
+                end
+
+                % Create interference directory if it doesn't exist
+                if ~exist('interference', 'dir')
+                    mkdir('interference');
+                end
+                % Delete existing files in interference directory
+                if exist('interference', 'dir')
+                    delete('interference/*');
+                end
+            end
 
             % Set waveform type and PUSCH numerology (SCS and CP type)
             obj.simParameters.Carrier = nrCarrierConfig;        % Carrier resource grid configuration
@@ -157,6 +158,7 @@ classdef PuschChannel < handle
             init_decodeULSCH(obj);
 
             obj.rxGrids = [];
+            obj.NIs =  struct('Slot', {}, 'NI', {});
         end
 
         function init_channel(obj)
@@ -622,15 +624,19 @@ classdef PuschChannel < handle
                 if (~blkerr)
                     NI = getNoiseInterference(decbits, obj.encodeULSCH, harqEntity, pusch, carrier, obj.simParameters.NTxAnts, rxGrid, estChannelGrid);
                     
-                    % Split H into I and Q components
-                    NI_I = real(NI);
-                    NI_Q = imag(NI);
-                    NI_zero = zeros(size(NI_I));
-                    NI_IQ = cat(3, NI_I, NI_Q, NI_zero);
-                    % Save H_IQ matrix as image without plotting
-                    imwrite(mat2gray(NI_IQ(:,:,1)), sprintf('ulchannel/noise_interference_slot_%d.png', nslot));
-                    save(sprintf('ulchannel/noise_interference_slot_%d.mat', nslot), 'NI_IQ');
-
+                    row = struct('Slot', nslot, 'NI', NI);
+                    obj.NIs = [obj.NIs; row];
+                    
+                    if (obj.simParameters.Plot)
+                        % Split H into I and Q components
+                        NI_I = real(NI);
+                        NI_Q = imag(NI);
+                        NI_zero = zeros(size(NI_I));
+                        NI_IQ = cat(3, NI_I, NI_Q, NI_zero);
+                        % Save H_IQ matrix as image without plotting
+                        imwrite(mat2gray(NI_IQ(:,:,1)), sprintf('ulchannel/noise_interference_slot_%d.png', nslot));
+                        save(sprintf('ulchannel/noise_interference_slot_%d.mat', nslot), 'NI_IQ');
+                    end
                     if (obj.simParameters.Plot)
                         h = figure('Visible', 'off');
                         imagesc(abs(NI(:,:,1)));
