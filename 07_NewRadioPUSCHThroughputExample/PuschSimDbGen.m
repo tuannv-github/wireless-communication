@@ -3,17 +3,13 @@ clc;
 
 database = [];
 
-if ~exist('database', 'dir')
-    mkdir('database');
-end
-
 % if exist('database', 'dir')
 %     delete('database/*');
 % end
 
-MCSs = [15];
-SNRs = [40];
-SIRs = [15];
+MCSs = [14];
+SNRs = [20];
+SIRs = [20];
 FRQs = [1e6];
 
 % MCSs = [14, 28];

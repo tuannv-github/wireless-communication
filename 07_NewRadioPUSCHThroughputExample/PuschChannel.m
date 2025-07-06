@@ -14,9 +14,8 @@ classdef PuschChannel < handle
         constellationDiagram
         puschmcsTables = nrPUSCHMCSTables;
         MCSIndex;
-        rxGrids;
         colorLimits = [0 2];
-        NIs;
+        grids;
     end
 
     methods
@@ -31,7 +30,7 @@ classdef PuschChannel < handle
 
             obj.simParameters.PerfectChannelEstimator = false;
             obj.simParameters.DisplaySimulationInformation = true;
-            obj.simParameters.Plot = true;
+            obj.simParameters.Plot = false;
 
             if obj.simParameters.Plot
                 % Create rxwaveform directory if it doesn't exist
@@ -157,8 +156,7 @@ classdef PuschChannel < handle
             init_encodeULSCH(obj);
             init_decodeULSCH(obj);
 
-            obj.rxGrids = [];
-            obj.NIs =  struct('Slot', {}, 'NI', {});
+            obj.grids =  struct('Slot', {}, 'Rx', {}, 'NoiseInterference', {}, 'Interference', {});
         end
 
         function init_channel(obj)
@@ -351,12 +349,12 @@ classdef PuschChannel < handle
                 % transmitted waveform. Also normalize by the number of receive
                 % antennas, as the channel model applies this normalization to the
                 % received waveform, by default
+                fprintf('Required SNR: %.2f dB\n', obj.simParameters.SNR);
                 SNRdB = obj.simParameters.SNR;
                 SNR = 10^(SNRdB/10);
                 N0 = 1/sqrt(obj.simParameters.NRxAnts*double(obj.waveformInfo.Nfft)*SNR);
                 noise = N0*randn(size(rxWaveform),"like",rxWaveform);
-                rxWaveform = rxWaveform + noise;
-                
+
                 % Plot the received waveform magnitude and phase for each receive antenna
                 if obj.simParameters.Plot
                     h = figure('Visible', 'off');
@@ -380,7 +378,6 @@ classdef PuschChannel < handle
                 % Add interference
                 if nargin > 2 && ~isempty(interference)
                     interferenceWaveform = interference.getInterference(rxWaveform, obj.waveformInfo.SampleRate);
-                    rxWaveform = rxWaveform + interferenceWaveform;
                     if obj.simParameters.Plot
                         h = figure('Visible', 'off');
                         subplot(2,1,1);
@@ -396,6 +393,30 @@ classdef PuschChannel < handle
                         saveas(h, sprintf('interference/interference_spectrogram_slot_%d.png', nslot));
                         close(h);
                     end
+                else
+                    interferenceWaveform = zeros(size(rxWaveform));
+                end
+
+                rxWaveform = rxWaveform + noise + interferenceWaveform;
+
+                % Plot the received waveform magnitude and phase for each receive antenna
+                if obj.simParameters.Plot
+                    h = figure('Visible', 'off');
+                    numRxAnts = size(rxWaveform, 2);
+                    for ant = 1:numRxAnts
+                        subplot(2*numRxAnts,1,2*ant-1);
+                        plot(abs(rxWaveform(:,ant)));
+                        title(sprintf('Received Waveform Magnitude - Slot %d, Rx Ant %d', nslot, ant));
+                        xlabel('Time');
+                        ylabel('Magnitude');
+
+                        subplot(2*numRxAnts,1,2*ant);
+                        spectrogram(rxWaveform(:,ant), 256, 240, 256, obj.waveformInfo.SampleRate, 'xaxis');
+                        title(sprintf('Received Waveform Spectrogram - Slot %d, Rx Ant %d', nslot, ant));
+                        colorbar;
+                    end
+                    saveas(h, sprintf('rxwaveform/rxwaveform_slot_%d.png', nslot));
+                    close(h);
                 end
 
                 % % Plot the tone noise in time domain
@@ -453,7 +474,6 @@ classdef PuschChannel < handle
                     rxGrid = cat(2, rxGrid, zeros(K,carrier.SymbolsPerSlot-L, R));
                 end
 
-                obj.rxGrids = cat(1, obj.rxGrids, reshape(rxGrid, 1, []));
                 time_s = time_s + obj.simParameters.slotDurationS;
                 % 7D1S2U
                 if mod(nslot, 2) == 0
@@ -531,6 +551,16 @@ classdef PuschChannel < handle
                     dmrsLayerSymbols = nrPUSCHDMRS(carrier,puschNonCodebook);
                     dmrsLayerIndices = nrPUSCHDMRSIndices(carrier,puschNonCodebook);
                     [estChannelGrid, noiseEst] = nrChannelEstimate(carrier,rxGrid,dmrsLayerIndices,dmrsLayerSymbols,'CDMLengths',pusch.DMRS.CDMLengths);
+                    fprintf('Noise estimate dB: %.2f\n', 10*log10(noiseEst));
+
+                    tx_dmrs = puschGrid(dmrsLayerIndices);
+                    rx_dmrs = rxGrid(dmrsLayerIndices);
+                    tx_dmrs_power = mean(abs(tx_dmrs).^2);
+                    rx_dmrs_power = mean(abs(rx_dmrs).^2);
+                    noise_power = mean(abs(rx_dmrs - estChannelGrid(dmrsLayerIndices).*tx_dmrs).^2);
+                    snr = rx_dmrs_power / noise_power;
+                    fprintf('Calculated SNRdB: %.2f\n', 10*log10(snr));
+
                     if obj.simParameters.Plot
                         receivedDMRS = rxGrid(dmrsLayerIndices);
                         h = figure('Visible', 'off');
@@ -622,24 +652,21 @@ classdef PuschChannel < handle
                 [decbits, blkerr] = decodeULSCHLocal(ulschLLRs, pusch.Modulation, pusch.NumLayers, harqEntity.RedundancyVersion);
 
                 if (~blkerr)
-                    NI = getNoiseInterference(decbits, obj.encodeULSCH, harqEntity, pusch, carrier, obj.simParameters.NTxAnts, rxGrid, estChannelGrid);
-                    
-                    row = struct('Slot', nslot, 'NI', NI);
-                    obj.NIs = [obj.NIs; row];
-                    
+                    NoiseInterferenceGrid = getNoiseInterference(decbits, obj.encodeULSCH, harqEntity, pusch, carrier, obj.simParameters.NTxAnts, rxGrid, estChannelGrid);
+
                     if (obj.simParameters.Plot)
                         % Split H into I and Q components
-                        NI_I = real(NI);
-                        NI_Q = imag(NI);
-                        NI_zero = zeros(size(NI_I));
-                        NI_IQ = cat(3, NI_I, NI_Q, NI_zero);
+                        NoiseInterferenceGrid_I = real(NoiseInterferenceGrid);
+                        NoiseInterferenceGrid_Q = imag(NoiseInterferenceGrid);
+                        NoiseInterferenceGrid_zero = zeros(size(NoiseInterferenceGrid_I));
+                        NoiseInterferenceGrid_IQ = cat(3, NoiseInterferenceGrid_I, NoiseInterferenceGrid_Q, NoiseInterferenceGrid_zero);
                         % Save H_IQ matrix as image without plotting
-                        imwrite(mat2gray(NI_IQ(:,:,1)), sprintf('ulchannel/noise_interference_slot_%d.png', nslot));
-                        save(sprintf('ulchannel/noise_interference_slot_%d.mat', nslot), 'NI_IQ');
+                        imwrite(NoiseInterferenceGrid_IQ, sprintf('ulchannel/noise_interference_slot_%d.png', nslot));
+                        save(sprintf('ulchannel/noise_interference_slot_%d.mat', nslot), 'NoiseInterferenceGrid_IQ');
                     end
                     if (obj.simParameters.Plot)
                         h = figure('Visible', 'off');
-                        imagesc(abs(NI(:,:,1)));
+                        imagesc(abs(NoiseInterferenceGrid(:,:,1)));
                         clim(obj.colorLimits);
                         colorbar;
                         title('Noise Interference Grid Magnitude');
@@ -648,6 +675,32 @@ classdef PuschChannel < handle
                         saveas(h, sprintf('ulchannel/noise_interference_rgb_slot_%d.png', nslot));
                         close(h);
                     end
+
+                    if nargin > 2 && ~isempty(interference)
+                        InterferenceGrid = nrOFDMDemodulate(carrier, interferenceWaveform(1+offset:end,:));
+
+                        if obj.simParameters.Plot
+                            InterferenceGrid_abs = abs(InterferenceGrid(:,:,1));
+                            imwrite(mat2gray(InterferenceGrid_abs), sprintf('ulchannel/interference_slot_%d.png', nslot));
+                            save(sprintf('ulchannel/interference_slot_%d.mat', nslot), 'InterferenceGrid_abs');
+                        end
+                        if obj.simParameters.Plot
+                            h = figure('Visible', 'off');
+                            imagesc(abs(InterferenceGrid(:,:,1)));
+                            clim(obj.colorLimits);
+                            colorbar;
+                            title('Interference Grid Magnitude');
+                            xlabel('OFDM Symbols');
+                            ylabel('Subcarriers');
+                            saveas(h, sprintf('ulchannel/interference_rgb_slot_%d.png', nslot));
+                            close(h);
+                        end
+                    else
+                        InterferenceGrid = [];
+                    end
+
+                    row = struct('Slot', nslot, 'Rx', rxGrid, 'NoiseInterference', NoiseInterferenceGrid, 'Interference', InterferenceGrid);
+                    obj.grids = [obj.grids; row];
                 end
 
                 % Update current process with CRC error and advance to next process

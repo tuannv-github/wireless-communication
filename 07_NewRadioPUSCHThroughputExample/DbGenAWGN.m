@@ -1,36 +1,18 @@
 clear;
 clc;
 
-if ~exist('dataset/FccIQ/good', 'dir')
-    mkdir('dataset/FccIQ/good');
-end
+% if exist('datasets/FccIQ/synthetic/train/good', 'dir')
+%     fprintf('Deleting existing directory\n');
+%     rmdir('datasets/FccIQ/synthetic/train/good', 's');
+% end
+fprintf('Creating new directory\n');
+mkdir('datasets/FccIQ/synthetic/train/good/rgb');
 
-if exist('dataset/FccIQ/good', 'dir')
-    delete('dataset/FccIQ/good/*');
-end
+% SNRs = [10, 20, 40];
+% MCSs = [1, 14, 28];
 
-if ~exist('dataset/FccIQ/good/rgb', 'dir')
-    mkdir('dataset/FccIQ/good/rgb');
-end
-
-if exist('dataset/FccIQ/good/rgb', 'dir')
-    delete('dataset/FccIQ/good/rgb/*');
-end
-
-% MCSs = [15];
-% SNRs = [40];
-
-% MCSs = [14, 28];
-% SNRs = [0, 20, 40];
-
-% MCSs = [14, 28];
-% SNRs = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50];
-
-% MCSs = [14, 28];
-% SNRs = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50];
-
+SNRs = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
 MCSs = [1, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28];
-SNRs = [2, 4, 6, 8, 10, 14, 18, 22, 26, 30, 34, 38, 42, 46, 50];
 
 fprintf('Running in parallel\n');
 
@@ -51,26 +33,26 @@ if isempty(gcp('nocreate'))
     % Start parpool with the desired number of workers
     parpool('Processes', numCores);
 
-    % Verify pool size
+    % Verify poonrChannelEstimatel size
     pool = gcp;
     fprintf('Parallel pool started with %d workers\n', pool.NumWorkers);
 end
 
 % Pre-allocate database array
 num_combinations = length(MCSs) * length(SNRs);
-database = struct('MCS', {}, 'SNR', {}, 'NIs', {});
+database = struct('MCS', {}, 'SNR', {}, 'grids', {});
 
 % Create parameter combinations
-[MCS_grid, SNR_grid] = ndgrid(MCSs, SNRs);
-params = [MCS_grid(:), SNR_grid(:)];
+[SNR, MCS] = ndgrid(SNRs, MCSs);
+params = [SNR(:), MCS(:)];
 
 % Pre-allocate results array to track success
 success_results = zeros(length(params), 1);
 
 parfor i = 1:length(params)
-    MCS = params(i,1);
-    SNR = params(i,2);
-    tx_bits = randi([0 1], 100000, 1);
+    SNR = params(i,1);
+    MCS = params(i,2);
+    tx_bits = randi([0 1], 1000000, 1);
 
     pusch_channel = PuschChannel();
     pusch_channel.simParameters.MCSIndex = MCS;
@@ -81,10 +63,10 @@ parfor i = 1:length(params)
 
     [rx_bits, time_s] = pusch_channel.tranceiver(tx_bits);
 
-    NIs = pusch_channel.NIs;
-    if length(NIs) > 0
+    grids = pusch_channel.grids;
+    if length(grids) > 0
         % Process noise interference data
-        fprintf('Noise interference data available: %d samples\n', length(NIs));
+        fprintf('Noise interference data available: %d samples\n', length(grids));
     end
 
     % Check if lengths match
@@ -115,7 +97,7 @@ parfor i = 1:length(params)
     fprintf('%.12f Gbits/second\n', throughput/1000000000);
     fprintf('--------------------------------\n');
 
-    row = struct('MCS', MCS, 'SNR', SNR, 'NIs', pusch_channel.NIs);
+    row = struct('SNR', SNR, 'MCS', MCS, 'grids', pusch_channel.grids);
     database = [database; row];
 end
 
@@ -130,9 +112,9 @@ if ~isempty(failed_indices)
     fprintf('--------------------------------\n');
     for i = 1:length(failed_indices)
         idx = failed_indices(i);
-        MCS = params(idx,1);
-        SNR = params(idx,2);
-        fprintf('MCS: %d, SNR: %.1f dB\n', MCS, SNR);
+        SNR = params(idx,1);
+        MCS = params(idx,2);
+        fprintf('SNR: %.1f dB, MCS: %d\n', SNR, MCS);
     end
     fprintf('--------------------------------\n');
     fprintf('Total failed cases: %d\n', length(failed_indices));
@@ -142,35 +124,84 @@ end
 
 % Save successful database entries to files
 fprintf('\nSaving successful database entries...\n');
-successful_count = 0;
+
+% Pre-define base paths to avoid repeated string concatenation
+base_path = 'datasets/FccIQ/synthetic/train/good';
+rgb_path = fullfile(base_path, 'rgb');
+
+% Pre-define color limits for consistency
+color_limits = [0, 2];
 
 for i = 1:length(database)
     item = database(i);
-    fprintf('Saving MCS: %d, SNR: %d\n', item.MCS, item.SNR);
+    fprintf('Saving SNR: %d, MCS: %d\n', item.SNR, item.MCS);
+    
     % Extract NI data for each transmission
-    for ni_idx = 1:length(item.NIs)
-        slot = item.NIs(ni_idx).Slot;
-        NI = item.NIs(ni_idx).NI;
+    for grid_idx = 1:length(item.grids)
+        slot = item.grids(grid_idx).Slot;
         
-        NI_I = real(NI);
-        NI_Q = imag(NI);
-        NI_zero = zeros(size(NI_I));
-        NI_IQ = cat(3, NI_I, NI_Q, NI_zero);
-        % Save H_IQ matrix as image without plotting
+        % Generate file names once
+        file_suffix = sprintf('SNR_%d_MCS_%d_Slot_%d_GridIdx_%d', item.SNR, item.MCS, slot, grid_idx);
+        
+        PNG_FILE_NAME_RX = fullfile(base_path, [file_suffix '_RxGrid.png']);
+        MAT_FILE_NAME_RX = fullfile(base_path, [file_suffix '_RxGrid.mat']);
+        RGB_FILE_NAME_RX = fullfile(rgb_path, [file_suffix '_RxGrid.png']);
+        
+        PNG_FILE_NAME_NI = fullfile(base_path, [file_suffix '_NoiseInterferenceGrid.png']);
+        MAT_FILE_NAME_NI = fullfile(base_path, [file_suffix '_NoiseInterferenceGrid.mat']);
+        RGB_FILE_NAME_NI = fullfile(rgb_path, [file_suffix '_NoiseInterferenceGrid.png']);
+        
+        % Check if all files already exist
+        all_files_exist = all([exist(PNG_FILE_NAME_RX, 'file'), exist(MAT_FILE_NAME_RX, 'file'), ...
+                              exist(RGB_FILE_NAME_RX, 'file'), exist(PNG_FILE_NAME_NI, 'file'), ...
+                              exist(MAT_FILE_NAME_NI, 'file'), exist(RGB_FILE_NAME_NI, 'file')]);
+        
+        if all_files_exist
+            fprintf('Files already exist for SNR: %d, MCS: %d, slot: %d, grid_idx: %d, skipping...\n', ...
+                item.SNR, item.MCS, slot, grid_idx);
+            continue;
+        end
+        
+        % Extract grid data
+        rxGrid = item.grids(grid_idx).Rx;
+        noiseInterferenceGrid = item.grids(grid_idx).NoiseInterference;
+        
+        % Process RxGrid
+        rxGrid_I = real(rxGrid);
+        rxGrid_Q = imag(rxGrid);
+        rxGrid_IQ = cat(3, rxGrid_I, rxGrid_Q, zeros(size(rxGrid_I)));
+        
+        imwrite(rxGrid_IQ, PNG_FILE_NAME_RX);
+        save(MAT_FILE_NAME_RX, 'rxGrid_IQ');
 
-        imwrite(mat2gray(NI_IQ(:,:,1)), sprintf('dataset/FccIQ/good/MCS_%d_SNR_%d_NI_%d_slot_%d.png', item.MCS, item.SNR, ni_idx, slot));
-        save(sprintf('dataset/FccIQ/good/MCS_%d_SNR_%d_NI_%d_slot_%d.mat', item.MCS, item.SNR, ni_idx, slot), 'NI_IQ');
-
+        % Create and save RGB visualization for RxGrid
         h = figure('Visible', 'off');
-        imagesc(abs(NI(:,:,1)));
-        clim([0, 2]);
+        imagesc(abs(rxGrid(:,:,1)));
+        clim(color_limits);
+        colorbar;
+        title('Rx Grid Magnitude');
+        xlabel('OFDM Symbols');
+        ylabel('Subcarriers');
+        saveas(h, RGB_FILE_NAME_RX);
+        close(h);
+
+        % Process NoiseInterferenceGrid
+        noiseInterferenceGrid_I = real(noiseInterferenceGrid);
+        noiseInterferenceGrid_Q = imag(noiseInterferenceGrid);
+        noiseInterferenceGrid_IQ = cat(3, noiseInterferenceGrid_I, noiseInterferenceGrid_Q, zeros(size(noiseInterferenceGrid_I)));
+        
+        imwrite(noiseInterferenceGrid_IQ, PNG_FILE_NAME_NI);
+        save(MAT_FILE_NAME_NI, 'noiseInterferenceGrid_IQ');
+        
+        % Create and save RGB visualization for NoiseInterferenceGrid
+        h = figure('Visible', 'off');
+        imagesc(abs(noiseInterferenceGrid(:,:,1)));
+        clim(color_limits);
         colorbar;
         title('Noise Interference Grid Magnitude');
         xlabel('OFDM Symbols');
         ylabel('Subcarriers');
-        saveas(h, sprintf('dataset/FccIQ/good/rgb/MCS_%d_SNR_%d_NI_%d_slot_%d.png', item.MCS, item.SNR, ni_idx, slot));
+        saveas(h, RGB_FILE_NAME_NI);
         close(h);
     end
 end
-
-fprintf('Successfully saved %d database entries to dataset/FccIQ/good/\n', successful_count);

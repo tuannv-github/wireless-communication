@@ -4,11 +4,13 @@ classdef InterferenceSingletone
     
     properties
         SIR;
+        toneFreq;
     end
     
     methods
         function obj = InterferenceSingletone(SIR)
             obj.SIR = SIR;
+            obj.toneFreq = 1e6;
         end
 
         function toneInterference = getInterference(obj, rxWaveform, SampleRate)
@@ -16,8 +18,7 @@ classdef InterferenceSingletone
             P_noise = P_signal / 10^(obj.SIR/10);
             toneAmp = sqrt(P_noise);   % Amplitude of the tone
             t = (0:length(rxWaveform)-1)' / SampleRate;
-            toneFreq = 1e6;
-            toneInterference = toneAmp * exp(1j*2*pi*toneFreq*t);
+            toneInterference = toneAmp * exp(1j*2*pi*obj.toneFreq*t);
             return;
         end
     end
