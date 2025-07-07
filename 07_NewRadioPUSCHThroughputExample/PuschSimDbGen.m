@@ -35,7 +35,21 @@ FRQs = [1e6];
 % STEP = 0.1e6;
 % FRQs = FRQ_min:STEP:FRQ_max;
 
-tx_bits = randi([0 1], 100000, 1);
+function [ret, row] = runSim(MCS, SNR, SIR, FRQ, crc_count)
+    ret = false;
+    row = struct('MCS', MCS, 'SNR', SNR, 'SIR', SIR, 'FRQ', FRQ, 'Throughput', 0, 'RxGrids', []);
+
+    fprintf('MCS: %d, SNR: %d, SIR: %d, FRQ: %d\n', MCS, SNR, SIR, FRQ);
+
+    % Create local copies for parallel processing
+    pusch_channel = PuschChannel(true);
+
+    pusch_channel.simParameters.MCSIndex = MCS;
+    pusch_channel.simParameters.SNR = SNR;
+    interference = InterferenceSingletone(SIR);
+
+    pusch_channel.tranceiver(crc_count, interference);
+end
 
 RUN_IN_PARALLEL = false;
 
@@ -44,7 +58,7 @@ if ~RUN_IN_PARALLEL
         for SNR = SNRs
             for SIR = SIRs
                 for FRQ = FRQs
-                    row = runSim(MCS, SNR, SIR, FRQ, tx_bits);
+                    row = runSim(MCS, SNR, SIR, FRQ, 2);
                     database = [database; row];
                 end
             end

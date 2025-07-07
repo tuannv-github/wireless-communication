@@ -40,7 +40,7 @@ end
 
 % Pre-allocate database array
 num_combinations = length(MCSs) * length(SNRs);
-database = struct('MCS', {}, 'SNR', {}, 'grids', {});
+database = struct('SNR', {}, 'MCS', {}, 'grids', {});
 
 % Create parameter combinations
 [SNR, MCS] = ndgrid(SNRs, MCSs);
@@ -52,7 +52,7 @@ success_results = zeros(length(params), 1);
 parfor i = 1:length(params)
     SNR = params(i,1);
     MCS = params(i,2);
-    tx_bits = randi([0 1], 1000000, 1);
+    crc_count = 10000;
 
     pusch_channel = PuschChannel();
     pusch_channel.simParameters.MCSIndex = MCS;
@@ -61,7 +61,12 @@ parfor i = 1:length(params)
     pusch_channel.simParameters.DisplaySimulationInformation = false;
     pusch_channel.simParameters.Plot = false;
 
-    [rx_bits, time_s] = pusch_channel.tranceiver(tx_bits);
+    ret = pusch_channel.tranceiver(crc_count);
+    success_results(i) = ret;
+    if ~ret
+        fprintf('Failed: %d\n', i);
+        continue;
+    end
 
     grids = pusch_channel.grids;
     if length(grids) > 0
@@ -69,37 +74,18 @@ parfor i = 1:length(params)
         fprintf('Noise interference data available: %d samples\n', length(grids));
     end
 
-    % Check if lengths match
-    if length(tx_bits) ~= length(rx_bits)
-        fprintf('Not all bits were received, received %d bits\n', length(rx_bits));
-        success_results(i) = 0;
-        continue;
-    end
-
-    % Compare transmitted and received bits
-    bit_errors = sum(tx_bits ~= rx_bits);
-    if bit_errors ~= 0
-        fprintf('Failed: %d bit errors detected\n', bit_errors);
-        success_results(i) = 0;
-        continue;
-    end
-
-    % Mark as successful
-    success_results(i) = 1;
-    fprintf('Success: All bits transmitted correctly\n');
-
-    % Calculate throughput
-    throughput = length(tx_bits) / time_s;  % bits per second
-    fprintf('Throughput:\n');
-    fprintf('%.12f bits/second\n', throughput);
-    fprintf('%.12f kbits/second\n', throughput/1000);
-    fprintf('%.12f Mbits/second\n', throughput/1000000);
-    fprintf('%.12f Gbits/second\n', throughput/1000000000);
-    fprintf('--------------------------------\n');
-
     row = struct('SNR', SNR, 'MCS', MCS, 'grids', pusch_channel.grids);
     database = [database; row];
 end
+
+% Sort database by SNR and MCS
+[~, sort_idx] = sortrows([cell2mat({database.SNR})', cell2mat({database.MCS})'], [1, 2]);
+database = database(sort_idx);
+fprintf('Database sorted by SNR and MCS\n');
+
+% Sort success_results by SNR and MCS
+[~, sort_indices] = sortrows([params(:,1), params(:,2)], [1, 2]); % Sort by SNR first, then MCS
+success_results = success_results(sort_indices);
 
 % Calculate total successful transmissions after parfor loop
 successful_transmissions = sum(success_results);
@@ -129,79 +115,85 @@ fprintf('\nSaving successful database entries...\n');
 base_path = 'datasets/FccIQ/synthetic/train/good';
 rgb_path = fullfile(base_path, 'rgb');
 
-% Pre-define color limits for consistency
-color_limits = [0, 2];
+% Save the entire database to a single .mat file
+database_file_path = fullfile(base_path, 'database.mat');
+fprintf('Saving complete database to: %s\n', database_file_path);
+save(database_file_path, 'database', '-v7.3');
+fprintf('Database saved successfully!\n');
 
-for i = 1:length(database)
-    item = database(i);
-    fprintf('Saving SNR: %d, MCS: %d\n', item.SNR, item.MCS);
+% % Pre-define color limits for consistency
+% color_limits = [0, 2];
+
+% for i = 1:length(database)
+%     item = database(i);
+%     fprintf('Saving SNR: %d, MCS: %d\n', item.SNR, item.MCS);
     
-    % Extract NI data for each transmission
-    for grid_idx = 1:length(item.grids)
-        slot = item.grids(grid_idx).Slot;
+%     % Extract NI data for each transmission
+%     for grid_idx = 1:length(item.grids)
+%         slot = item.grids(grid_idx).Slot;
         
-        % Generate file names once
-        file_suffix = sprintf('SNR_%d_MCS_%d_Slot_%d_GridIdx_%d', item.SNR, item.MCS, slot, grid_idx);
+%         % Generate file names once
+%         file_suffix = sprintf('SNR_%d_MCS_%d_Slot_%d_GridIdx_%d', item.SNR, item.MCS, slot, grid_idx);
         
-        PNG_FILE_NAME_RX = fullfile(base_path, [file_suffix '_RxGrid.png']);
-        MAT_FILE_NAME_RX = fullfile(base_path, [file_suffix '_RxGrid.mat']);
-        RGB_FILE_NAME_RX = fullfile(rgb_path, [file_suffix '_RxGrid.png']);
+%         PNG_FILE_NAME_RX = fullfile(base_path, [file_suffix '_RxGrid.png']);
+%         MAT_FILE_NAME_RX = fullfile(base_path, [file_suffix '_RxGrid.mat']);
+%         RGB_FILE_NAME_RX = fullfile(rgb_path, [file_suffix '_RxGrid.png']);
         
-        PNG_FILE_NAME_NI = fullfile(base_path, [file_suffix '_NoiseInterferenceGrid.png']);
-        MAT_FILE_NAME_NI = fullfile(base_path, [file_suffix '_NoiseInterferenceGrid.mat']);
-        RGB_FILE_NAME_NI = fullfile(rgb_path, [file_suffix '_NoiseInterferenceGrid.png']);
+%         PNG_FILE_NAME_NI = fullfile(base_path, [file_suffix '_NoiseInterferenceGrid.png']);
+%         MAT_FILE_NAME_NI = fullfile(base_path, [file_suffix '_NoiseInterferenceGrid.mat']);
+%         RGB_FILE_NAME_NI = fullfile(rgb_path, [file_suffix '_NoiseInterferenceGrid.png']);
         
-        % Check if all files already exist
-        all_files_exist = all([exist(PNG_FILE_NAME_RX, 'file'), exist(MAT_FILE_NAME_RX, 'file'), ...
-                              exist(RGB_FILE_NAME_RX, 'file'), exist(PNG_FILE_NAME_NI, 'file'), ...
-                              exist(MAT_FILE_NAME_NI, 'file'), exist(RGB_FILE_NAME_NI, 'file')]);
+%         % Check if all files already exist
+%         all_files_exist = all([exist(PNG_FILE_NAME_RX, 'file'), exist(MAT_FILE_NAME_RX, 'file'), ...
+%                               exist(RGB_FILE_NAME_RX, 'file'), exist(PNG_FILE_NAME_NI, 'file'), ...
+%                               exist(MAT_FILE_NAME_NI, 'file'), exist(RGB_FILE_NAME_NI, 'file')]);
         
-        if all_files_exist
-            fprintf('Files already exist for SNR: %d, MCS: %d, slot: %d, grid_idx: %d, skipping...\n', ...
-                item.SNR, item.MCS, slot, grid_idx);
-            continue;
-        end
+%         if all_files_exist
+%             fprintf('Files already exist for SNR: %d, MCS: %d, slot: %d, grid_idx: %d, skipping...\n', ...
+%                 item.SNR, item.MCS, slot, grid_idx);
+%             continue;
+%         end
         
-        % Extract grid data
-        rxGrid = item.grids(grid_idx).Rx;
-        noiseInterferenceGrid = item.grids(grid_idx).NoiseInterference;
+%         % Extract grid data
+%         rxGrid = item.grids(grid_idx).Rx;
+%         noiseInterferenceGrid = item.grids(grid_idx).NoiseInterference;
         
-        % Process RxGrid
-        rxGrid_I = real(rxGrid);
-        rxGrid_Q = imag(rxGrid);
-        rxGrid_IQ = cat(3, rxGrid_I, rxGrid_Q, zeros(size(rxGrid_I)));
+%         % Process RxGrid
+%         rxGrid_I = real(rxGrid);
+%         rxGrid_Q = imag(rxGrid);
+%         rxGrid_IQ = cat(3, rxGrid_I, rxGrid_Q, zeros(size(rxGrid_I)));
         
-        imwrite(rxGrid_IQ, PNG_FILE_NAME_RX);
-        save(MAT_FILE_NAME_RX, 'rxGrid_IQ');
+%         imwrite(rxGrid_IQ, PNG_FILE_NAME_RX);
+%         save(MAT_FILE_NAME_RX, 'rxGrid_IQ');
 
-        % Create and save RGB visualization for RxGrid
-        h = figure('Visible', 'off');
-        imagesc(abs(rxGrid(:,:,1)));
-        clim(color_limits);
-        colorbar;
-        title('Rx Grid Magnitude');
-        xlabel('OFDM Symbols');
-        ylabel('Subcarriers');
-        saveas(h, RGB_FILE_NAME_RX);
-        close(h);
+%         % Create and save RGB visualization for RxGrid
+%         h = figure('Visible', 'off');
+%         imagesc(abs(rxGrid(:,:,1)));
+%         clim(color_limits);
+%         colorbar;
+%         title('Rx Grid Magnitude');
+%         xlabel('OFDM Symbols');
+%         ylabel('Subcarriers');
+%         saveas(h, RGB_FILE_NAME_RX);
+%         close(h);
 
-        % Process NoiseInterferenceGrid
-        noiseInterferenceGrid_I = real(noiseInterferenceGrid);
-        noiseInterferenceGrid_Q = imag(noiseInterferenceGrid);
-        noiseInterferenceGrid_IQ = cat(3, noiseInterferenceGrid_I, noiseInterferenceGrid_Q, zeros(size(noiseInterferenceGrid_I)));
+%         % Process NoiseInterferenceGrid
+%         noiseInterferenceGrid_I = real(noiseInterferenceGrid);
+%         noiseInterferenceGrid_Q = imag(noiseInterferenceGrid);
+%         noiseInterferenceGrid_IQ = cat(3, noiseInterferenceGrid_I, noiseInterferenceGrid_Q, zeros(size(noiseInterferenceGrid_I)));
         
-        imwrite(noiseInterferenceGrid_IQ, PNG_FILE_NAME_NI);
-        save(MAT_FILE_NAME_NI, 'noiseInterferenceGrid_IQ');
+%         imwrite(noiseInterferenceGrid_IQ, PNG_FILE_NAME_NI);
+%         save(MAT_FILE_NAME_NI, 'noiseInterferenceGrid_IQ');
         
-        % Create and save RGB visualization for NoiseInterferenceGrid
-        h = figure('Visible', 'off');
-        imagesc(abs(noiseInterferenceGrid(:,:,1)));
-        clim(color_limits);
-        colorbar;
-        title('Noise Interference Grid Magnitude');
-        xlabel('OFDM Symbols');
-        ylabel('Subcarriers');
-        saveas(h, RGB_FILE_NAME_NI);
-        close(h);
-    end
-end
+%         % Create and save RGB visualization for NoiseInterferenceGrid
+%         h = figure('Visible', 'off');
+%         imagesc(abs(noiseInterferenceGrid(:,:,1)));
+%         clim(color_limits);
+%         colorbar;
+%         title('Noise Interference Grid Magnitude');
+%         xlabel('OFDM Symbols');
+%         ylabel('Subcarriers');
+%         saveas(h, RGB_FILE_NAME_NI);
+%         close(h);
+%     end
+% end

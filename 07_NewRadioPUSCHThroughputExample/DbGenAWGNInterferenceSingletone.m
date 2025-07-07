@@ -4,21 +4,21 @@ clc;
 mkdir('datasets/FccIQ/synthetic/ground_truth/singletone/rgb');
 mkdir('datasets/FccIQ/synthetic/test/singletone/rgb');
 
-SNRs = [5, 15];
-SIRs = [5, 15];
-MCSs = [14, 28];
-FRQs = [-1e6, -0.5e6, 0, 0.5e6, 1e6, 1.5e6, 2e6];
+% SNRs = [5, 15];
+% SIRs = [5, 15];
+% MCSs = [14, 28];
+% FRQs = [-1e6, -0.5e6, 0, 0.5e6, 1e6, 1.5e6, 2e6];
 
-% SNRs = [2, 4, 6, 8, 10, 14, 18, 22, 30, 38, 46];
-% SIRs = [2, 4, 6, 8, 10, 14, 18, 22, 30, 38, 46];
-% MCSs = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28];
-% FRQ_min = -2e6;
-% FRQ_max = 2e6;
-% STEP = 1e6;
-% FRQs = FRQ_min:STEP:FRQ_max;
-% fprintf('FRQs: ');
-% fprintf('%d ', FRQs);
-% fprintf('\n');
+SNRs = [15];
+SIRs = [2, 4, 6, 8, 10, 14, 18, 22, 30, 38, 46];
+MCSs = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28];
+FRQ_min = -2e6;
+FRQ_max = 2e6;
+STEP = 1e6;
+FRQs = FRQ_min:STEP:FRQ_max;
+fprintf('FRQs: ');
+fprintf('%d ', FRQs);
+fprintf('\n');
 
 % SIRs = [2, 4, 6, 8, 10, 14, 18, 22, 26, 30, 34, 38, 42, 46, 50];
 % SNRs = [2, 4, 6, 8, 10, 14, 18, 22, 26, 30, 34, 38, 42, 46, 50];
@@ -218,5 +218,6 @@ for SNR = SNRs
         row = struct('SNR', SNR, 'SIR', SIR, 'MCS', MCS, "FRQ", FRQ, "grids", grids);
         database = [database; row];
     end
-    saveGrids(database, sprintf('datasets/FccIQ/synthetic/'), "singletone");
+    % saveGrids(database, sprintf('datasets/FccIQ/synthetic/'), "singletone");
+    save(sprintf('datasets/FccIQ/synthetic/test/singletone/database_SNR_%03d.mat', SNR), 'database', '-v7.3');
 end

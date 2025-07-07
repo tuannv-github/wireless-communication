@@ -19,72 +19,77 @@ classdef PuschChannel < handle
     end
 
     methods
-        function obj = PuschChannel()
+        function obj = PuschChannel(plot)
             % obj.constellationDiagram = comm.ConstellationDiagram;
             % obj.constellationDiagram.EnableMeasurements = true;
 
             obj.simParameters = struct();
+
+            if nargin > 0
+                obj.simParameters.Plot = plot;
+            else
+                obj.simParameters.Plot = false;
+            end
 
             obj.simParameters.SNR = 45;
             obj.simParameters.MCSIndex = 28; % MCS index (0-28)
 
             obj.simParameters.PerfectChannelEstimator = false;
             obj.simParameters.DisplaySimulationInformation = true;
-            obj.simParameters.Plot = false;
 
             if obj.simParameters.Plot
                 % Create rxwaveform directory if it doesn't exist
-                if ~exist('rxwaveform', 'dir')
-                    mkdir('rxwaveform');
+                if ~exist('00_rxwaveform', 'dir')
+                    mkdir('00_rxwaveform');
                 end
                 % Delete existing files in rxwaveform directory
-                if exist('rxwaveform', 'dir')
-                    delete('rxwaveform/*');
+                if exist('00_rxwaveform', 'dir')
+                    delete('00_rxwaveform/*');
                 end
 
                 % Create rxgrid directory if it doesn't exist
-                if ~exist('rxgrid', 'dir')
-                    mkdir('rxgrid');
+                if ~exist('01_rxgrid', 'dir')
+                    mkdir('01_rxgrid');
                 end            
                 % Delete existing files in rxgrid directory
-                if exist('rxgrid', 'dir')
-                    delete('rxgrid/*');
+                if exist('01_rxgrid', 'dir')
+                    delete('01_rxgrid/*');
                 end
 
                 % Create constellation directory if it doesn't exist
-                if ~exist('constellation', 'dir')
-                    mkdir('constellation');
+                if ~exist('02_constellation', 'dir')
+                    mkdir('02_constellation');
                 end
                 % Delete existing files in constellation directory
-                if exist('constellation', 'dir')
-                    delete('constellation/*');
+                if exist('02_constellation', 'dir')
+                    delete('02_constellation/*');
                 end
 
                 % Create channel directory if it doesn't exist
-                if ~exist('ulchannel', 'dir')
-                    mkdir('ulchannel');
+                if ~exist('03_ulchannel', 'dir')
+                    mkdir('03_ulchannel');
                 end
                 % Delete existing files in channel directory
-                if exist('ulchannel', 'dir')
-                    delete('ulchannel/*');
+                if exist('03_ulchannel', 'dir')
+                    delete('03_ulchannel/*');
                 end
 
                 % Create tx directory if it doesn't exist
-                if ~exist('txgrid', 'dir')
-                    mkdir('txgrid');
+                if ~exist('04_txgrid', 'dir')
+                    mkdir('04_txgrid');
                 end
                 % Delete existing files in tx directory
-                if exist('txgrid', 'dir')
-                    delete('txgrid/*');
+                if exist('04_txgrid', 'dir')
+                    delete('04_txgrid/*');
                 end
 
                 % Create interference directory if it doesn't exist
-                if ~exist('interference', 'dir')
-                    mkdir('interference');
+                if ~exist('05_interference', 'dir')
+                    mkdir('05_interference');
                 end
                 % Delete existing files in interference directory
-                if exist('interference', 'dir')
-                    delete('interference/*');
+                if exist('05_interference', 'dir')
+                    delete('05_interference/*');
                 end
             end
 
@@ -195,7 +200,7 @@ classdef PuschChannel < handle
             obj.decodeULSCH.MaximumLDPCIterationCount = obj.simParameters.PUSCHExtension.MaximumLDPCIterationCount;
         end
         
-        function [rx, time_s] = tranceiver(obj, tx, interference)
+        function ret = tranceiver(obj, crc_count, interference)
             % Transceiver function that simulates PUSCH transmission and reception
             % Inputs:
             %   tx - Transmitted bits
@@ -228,14 +233,12 @@ classdef PuschChannel < handle
 
             offset = 0;
 
-            rx = [];
-            startIdx = 1;
             time_s = 0;
             nslot = 0;
 
             timeout_counter = 0;
 
-            while startIdx < length(tx)
+            while crc_count > 0 
                 % Set the slot number
                 carrier.NSlot = nslot;
                 nslot = nslot + 1;
@@ -250,25 +253,17 @@ classdef PuschChannel < handle
                 % If new data for current process then create a new UL-SCH transport block
                 if harqEntity.NewData
                     fprintf("New data for HARQ process %d\n", harqEntity.HARQProcessID);
-                    % Extract the transport block from the transmitted bits
-                    endIdx = min(startIdx + trBlkSize - 1, length(tx));
-                    trx_size = endIdx - startIdx + 1;
-                    trBlk = tx(startIdx:endIdx);
-                    fprintf("Transmitting %d bits from %d to %d/%d\n", trx_size, startIdx, endIdx, length(tx));
-
-                    % Pad the transport block with zeros if needed
-                    if trx_size < trBlkSize
-                        trBlk = [trBlk; zeros(trBlkSize - trx_size, 1)];
-                    end
+                    trBlk = randi([0 1], trBlkSize, 1);
 
                     setTransportBlock(obj.encodeULSCH, trBlk, harqEntity.HARQProcessID);
                     if harqEntity.SequenceTimeout
                         fprintf("Resetting soft buffer for HARQ process %d\n", harqEntity.HARQProcessID);
                         resetSoftBuffer(decodeULSCHLocal, harqEntity.HARQProcessID);
                         timeout_counter = timeout_counter + 1;
-                        if timeout_counter > 4
+                        if timeout_counter > 10
                             fprintf("HARQ process %d timeout counter exceeded 10\n", harqEntity.HARQProcessID);
-                            break;
+                            ret = false;
+                            return;
                         end
                     else
                         timeout_counter = 0;
@@ -316,7 +311,7 @@ classdef PuschChannel < handle
                     clim(obj.colorLimits);
                     colorbar;
                     title('PUSCH Grid Magnitude');
-                    saveas(h, sprintf('txgrid/puschgrid_slot_%d.png', nslot));
+                    saveas(h, sprintf('04_txgrid/puschgrid_slot_%d.png', nslot));
                     close(h);
                 end
                 if obj.simParameters.Plot
@@ -327,7 +322,7 @@ classdef PuschChannel < handle
                     xlabel('In-Phase');
                     ylabel('Quadrature');
                     axis equal;
-                    saveas(h, sprintf('txgrid/pusch_tx_constellation_slot_%d.png', nslot));
+                    saveas(h, sprintf('04_txgrid/pusch_tx_constellation_slot_%d.png', nslot));
                     close(h);
                 end
 
@@ -371,7 +366,7 @@ classdef PuschChannel < handle
                         title(sprintf('Received Waveform Spectrogram - Slot %d, Rx Ant %d', nslot, ant));
                         colorbar;
                     end
-                    saveas(h, sprintf('rxwaveform/rxwaveform_slot_%d.png', nslot));
+                    saveas(h, sprintf('00_rxwaveform/rxwaveform_slot_%d.png', nslot));
                     close(h);
                 end
 
@@ -390,7 +385,7 @@ classdef PuschChannel < handle
                         spectrogram(interferenceWaveform, 256, 240, 256, obj.waveformInfo.SampleRate, 'xaxis');
                         title(sprintf('Interference Spectrogram - Slot %d', nslot));
                         colorbar;
-                        saveas(h, sprintf('interference/interference_spectrogram_slot_%d.png', nslot));
+                        saveas(h, sprintf('05_interference/interference_spectrogram_slot_%d.png', nslot));
                         close(h);
                     end
                 else
@@ -415,7 +410,7 @@ classdef PuschChannel < handle
                         title(sprintf('Received Waveform Spectrogram - Slot %d, Rx Ant %d', nslot, ant));
                         colorbar;
                     end
-                    saveas(h, sprintf('rxwaveform/rxwaveform_slot_%d.png', nslot));
+                    saveas(h, sprintf('00_rxwaveform/rxwaveform_slot_%d.png', nslot));
                     close(h);
                 end
 
@@ -515,7 +510,7 @@ classdef PuschChannel < handle
                     set(gca, 'FontSize', 20); % Increase font size
                     set(gcf, 'Position', [100, 100, 1200, 800]); % Make figure larger
                     
-                    saveas(h, sprintf('rxgrid/rxgrid_slot_%d.png', nslot));
+                    saveas(h, sprintf('01_rxgrid/rxgrid_slot_%d.png', nslot));
                     close(h);
                 end
 
@@ -570,7 +565,7 @@ classdef PuschChannel < handle
                         xlabel('In-Phase (I)');
                         ylabel('Quadrature (Q)');
                         axis equal;
-                        saveas(h, sprintf('constellation/rx_dmrs_constellation_slot_%d.png', nslot));
+                        saveas(h, sprintf('02_constellation/rx_dmrs_constellation_slot_%d.png', nslot));
                         close(h);
                     end
                     if obj.simParameters.Plot
@@ -581,7 +576,7 @@ classdef PuschChannel < handle
                         title('Estimated Channel Grid Magnitude');
                         xlabel('OFDM Symbols');
                         ylabel('Subcarriers');
-                        saveas(h, sprintf('ulchannel/channel_slot_%d.png', nslot));
+                        saveas(h, sprintf('03_ulchannel/channel_slot_%d.png', nslot));
                         close(h);
                     end
                 end
@@ -601,7 +596,7 @@ classdef PuschChannel < handle
                     xlabel('In-Phase');
                     ylabel('Quadrature');
                     axis equal;
-                    saveas(h, sprintf('constellation/pusch_rx_constellation_slot_%d.png', nslot));
+                    saveas(h, sprintf('02_constellation/pusch_rx_constellation_slot_%d.png', nslot));
                     close(h);
                 end
 
@@ -627,7 +622,7 @@ classdef PuschChannel < handle
                     xlabel('In-Phase');
                     ylabel('Quadrature');
                     axis equal;
-                    saveas(h, sprintf('constellation/pusch_constellation_slot_%d.png', nslot));
+                    saveas(h, sprintf('02_constellation/pusch_constellation_slot_%d.png', nslot));
                     close(h);
                 end
 
@@ -661,8 +656,8 @@ classdef PuschChannel < handle
                         NoiseInterferenceGrid_zero = zeros(size(NoiseInterferenceGrid_I));
                         NoiseInterferenceGrid_IQ = cat(3, NoiseInterferenceGrid_I, NoiseInterferenceGrid_Q, NoiseInterferenceGrid_zero);
                         % Save H_IQ matrix as image without plotting
-                        imwrite(NoiseInterferenceGrid_IQ, sprintf('ulchannel/noise_interference_slot_%d.png', nslot));
-                        save(sprintf('ulchannel/noise_interference_slot_%d.mat', nslot), 'NoiseInterferenceGrid_IQ');
+                        imwrite(NoiseInterferenceGrid_IQ, sprintf('03_ulchannel/noise_interference_slot_%d.png', nslot));
+                        save(sprintf('03_ulchannel/noise_interference_slot_%d.mat', nslot), 'NoiseInterferenceGrid_IQ');
                     end
                     if (obj.simParameters.Plot)
                         h = figure('Visible', 'off');
@@ -672,7 +667,7 @@ classdef PuschChannel < handle
                         title('Noise Interference Grid Magnitude');
                         xlabel('OFDM Symbols');
                         ylabel('Subcarriers');
-                        saveas(h, sprintf('ulchannel/noise_interference_rgb_slot_%d.png', nslot));
+                        saveas(h, sprintf('03_ulchannel/noise_interference_rgb_slot_%d.png', nslot));
                         close(h);
                     end
 
@@ -681,8 +676,8 @@ classdef PuschChannel < handle
 
                         if obj.simParameters.Plot
                             InterferenceGrid_abs = abs(InterferenceGrid(:,:,1));
-                            imwrite(mat2gray(InterferenceGrid_abs), sprintf('ulchannel/interference_slot_%d.png', nslot));
-                            save(sprintf('ulchannel/interference_slot_%d.mat', nslot), 'InterferenceGrid_abs');
+                            imwrite(mat2gray(InterferenceGrid_abs), sprintf('03_ulchannel/interference_slot_%d.png', nslot));
+                            save(sprintf('03_ulchannel/interference_slot_%d.mat', nslot), 'InterferenceGrid_abs');
                         end
                         if obj.simParameters.Plot
                             h = figure('Visible', 'off');
@@ -692,7 +687,7 @@ classdef PuschChannel < handle
                             title('Interference Grid Magnitude');
                             xlabel('OFDM Symbols');
                             ylabel('Subcarriers');
-                            saveas(h, sprintf('ulchannel/interference_rgb_slot_%d.png', nslot));
+                            saveas(h, sprintf('03_ulchannel/interference_rgb_slot_%d.png', nslot));
                             close(h);
                         end
                     else
@@ -701,6 +696,8 @@ classdef PuschChannel < handle
 
                     row = struct('Slot', nslot, 'Rx', rxGrid, 'NoiseInterference', NoiseInterferenceGrid, 'Interference', InterferenceGrid);
                     obj.grids = [obj.grids; row];
+
+                    crc_count = crc_count - 1;
                 end
 
                 % Update current process with CRC error and advance to next process
@@ -714,16 +711,9 @@ classdef PuschChannel < handle
                     fprintf("Block error\n");
                     continue
                 end
-
-                % Update the start index for the next transmission
-                startIdx = startIdx + trBlkSize;
-                
-                if (trx_size < trBlkSize)
-                    rx = [rx; decbits(1:trx_size)];
-                else
-                    rx = [rx; decbits];
-                end
             end
+
+            ret = true;
         end
     end
 end
