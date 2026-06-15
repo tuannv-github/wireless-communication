@@ -8,9 +8,10 @@ from sionna.phy.channel.tr38901 import TDL
 from sionna.phy.nr import PUSCHConfig, PUSCHLSChannelEstimator, PUSCHTransmitter
 from sionna.phy.ofdm import LMMSEInterpolator, tdl_freq_cov_mat, tdl_time_cov_mat
 
-# NR PUSCH resource grid with DMRS pilots
+# NR PUSCH resource grid with DMRS pilots (1 CDM group → 6 DMRS REs/PRB)
 pusch_config = PUSCHConfig()
 pusch_config.dmrs.additional_position = 1
+pusch_config.dmrs.num_cdm_groups_without_data = 1
 transmitter = PUSCHTransmitter(pusch_config)
 rg = transmitter.resource_grid
 
