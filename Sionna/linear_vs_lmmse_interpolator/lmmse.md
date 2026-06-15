@@ -33,6 +33,24 @@ cov_mat_freq = tdl_freq_cov_mat("A", subcarrier_spacing, fft_size, delay_spread)
 cov_mat_time = tdl_time_cov_mat("A", speed, carrier_frequency, ofdm_symbol_duration, num_ofdm_symbols)
 ```
 
+**Why `fft_size`, not “number of subcarriers”?** Sionna’s API names the third argument `fft_size` because **R⁽ᶠ⁾** is indexed by FFT bin \(u,v = 1,\ldots,M\):
+
+\[
+R^{(f)}_{u,v} = \sum_{\ell} P_\ell e^{-j 2\pi \tau_\ell \Delta_f (u-v)}
+\]
+
+So the matrix is **\(M \times M\)** where \(M\) is the frequency dimension of the channel vector the interpolator works on.
+
+| Concept | In general | In our script (`4` RB PUSCH) |
+|---------|------------|------------------------------|
+| `fft_size` | OFDM FFT length \(M\) | **48** (`rg.fft_size`) |
+| Effective subcarriers | Data/pilot SC actually used | **48** (`rg.num_effective_subcarriers`) |
+| Guard / null SC | Often `fft_size >` used SC | **0** (`rg.num_guard_carriers = [0,0]`) |
+
+Here **`fft_size == num_effective_subcarriers == 48`**, so passing `rg.fft_size` is correct and matches the **48-subcarrier row** in pass 1. In a full-cell grid (e.g. 1024-point FFT with guard bands), \(M\) would still be the FFT size that defines subcarrier spacing \(\Delta_f = B/M\); the covariance must match the same indexing as `h_hat` on the resource grid.
+
+The script uses `rg.fft_size` (not a separate “num subcarriers” field) because that is what Sionna’s `ResourceGrid` and `LMMSEInterpolator` use for the frequency axis.
+
 | Covariance | Driven by | Physical meaning |
 |------------|-----------|------------------|
 | **R⁽ᶠ⁾** | Delay spread $\tau_{\mathrm{rms}}$ | Wider delay spread → **narrower** coherence bandwidth ($B_c \sim 1/\tau_{\mathrm{rms}}$) → **weaker** correlation between subcarriers at a given spacing (more frequency-selective fading). Narrow delay spread → nearly flat channel → all subcarriers almost perfectly correlated. |
@@ -265,7 +283,7 @@ Default `PUSCHConfig()` with `dmrs.additional_position = 1` and `num_cdm_groups_
 |----------------|--------|-----------------|
 | OFDM symbols | $N$ | **14** (`rg.num_ofdm_symbols`) |
 | PUSCH allocation | $N_{\mathrm{RB}}$ | **4 RBs** (`pusch_config.num_resource_blocks`) |
-| Subcarriers (FFT size) | $M$ | **48** = $N_{\mathrm{RB}} \times 12$ RE/PRB (`rg.fft_size`) |
+| Subcarriers on grid | $M$ | **48** = $N_{\mathrm{RB}} \times 12$ (`rg.fft_size` = `rg.num_effective_subcarriers`; no guard carriers) |
 | DMRS symbols (0-based) | — | **2** and **11** (2 DMRS positions) |
 | Pilots per DMRS symbol | $K_n$ | **24** = $6 \times N_{\mathrm{RB}}$ on symbols 2, 11; **0** otherwise |
 | Raw pilots per subcarrier | $L_m^{\mathrm{raw}}$ | **2** on 24 comb SC; **0** on 24 gap SC (before interpolation) |
